@@ -1,0 +1,24 @@
+# Rust
+target/
+Cargo.lock
+
+# Flutter
+flutter_app/build/
+flutter_app/.dart_tool/
+flutter_app/.packages
+flutter_app/pubspec.lock
+
+# Data
+data/
+*.db
+
+# Models
+localai/models/*.gguf
+localai/models/openmythos/
+
+# Environment
+.env
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,22 @@
+# Auto detect text files
+* text=auto
+
+# Rust
+*.rs text
+*.toml text
+
+# Flutter/Dart
+*.dart text
+*.yaml text
+
+# Windows scripts
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+
+# Images
+*.png binary
+*.jpg binary
+*.ico binary
+
+# Models (Git LFS recommended)
+*.gguf binary

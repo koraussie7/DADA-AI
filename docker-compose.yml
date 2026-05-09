@@ -1,0 +1,72 @@
+version: "3.9"
+
+services:
+  localai:
+    image: localai/localai:latest-gpu-nvidia-cuda-12
+    container_name: liberty-localai
+    ports:
+      - "8080:8080"
+    environment:
+      - MODELS_PATH=/models
+      - THREADS=4
+      - DEBUG=true
+    volumes:
+      - ./localai/models:/models
+      - ./localai/config:/config
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - liberty-net
+
+  liberty-reach-node-1:
+    build: .
+    container_name: liberty-node-1
+    ports:
+      - "8000:8000"
+    environment:
+      - RUST_LOG=info
+      - IDENTITY=node-1
+      - PORT=8000
+      - BOOTSTRAP=
+    depends_on:
+      localai:
+        condition: service_healthy
+    volumes:
+      - ./data/node-1:/data
+    networks:
+      - liberty-net
+
+  liberty-reach-node-2:
+    build: .
+    container_name: liberty-node-2
+    ports:
+      - "8001:8000"
+    environment:
+      - RUST_LOG=info
+      - IDENTITY=node-2
+      - PORT=8000
+      - BOOTSTRAP=/dns4/liberty-node-1/tcp/8000
+    depends_on:
+      localai:
+        condition: service_healthy
+      liberty-reach-node-1:
+        condition: service_started
+    volumes:
+      - ./data/node-2:/data
+    networks:
+      - liberty-net
+
+networks:
+  liberty-net:
+    driver: bridge
