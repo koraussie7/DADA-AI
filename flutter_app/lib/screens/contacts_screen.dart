@@ -23,7 +23,7 @@ class ContactsScreen extends StatelessWidget {
                 context,
                 MaterialPageRoute(
                   builder: (_) => ChatScreen(
-                    peerId: c.peerId,
+                    peerId: c.peerId ?? '',
                     peerName: c.name,
                     isAI: false,
                   ),
