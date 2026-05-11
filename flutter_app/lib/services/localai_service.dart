@@ -8,7 +8,7 @@ class LocalAIService {
   final http.Client _client;
   bool _lastHealth = false;
 
-  LocalAIService({String baseUrl = 'http://185.55.243.225:8081'})
+  LocalAIService({String baseUrl = 'http://185.55.243.225:11434'})
       : _baseUrl = baseUrl,
         _client = http.Client();
 
@@ -22,7 +22,7 @@ class LocalAIService {
             Uri.parse('$_baseUrl/v1/chat/completions'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
-              'model': 'gemma-4-e2b-it',
+              'model': 'llava:7b',
               'messages': [{'role': 'user', 'content': prompt}],
               'stream': false,
               'max_tokens': 2048,
@@ -62,7 +62,7 @@ class LocalAIService {
             Uri.parse('$_baseUrl/v1/chat/completions'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
-              'model': 'gemma-4-e2b-it',
+              'model': 'llava:7b',
               'messages': [{'role': 'user', 'content': content}],
               'max_tokens': 4096,
               'temperature': 0.7,
@@ -87,7 +87,7 @@ class LocalAIService {
   Future<bool> health() async {
     try {
       final response = await _client
-          .get(Uri.parse('$_baseUrl/healthz'))
+          .get(Uri.parse('$_baseUrl/api/tags'))
           .timeout(const Duration(seconds: 5));
       _lastHealth = response.statusCode == 200;
       return _lastHealth;

@@ -102,14 +102,14 @@ class _ChatScreenState extends State<ChatScreen> {
     final b64 = base64Encode(bytes);
 
     _addMessage(ChatMessage(id: _uuid.v4(), sender: 'me', content: prompt, isMe: true, imagePaths: [file.path]));
-    _addMessage(ChatMessage(id: _uuid.v4(), sender: 'Gemma AI', content: 'Analyzing...', isMe: false, isAI: true, isLoading: true));
+    _addMessage(ChatMessage(id: _uuid.v4(), sender: 'LLaVA AI', content: 'Analyzing...', isMe: false, isAI: true, isLoading: true));
 
     final response = await _ai.generateMultimodal(prompt, [b64]);
 
     if (mounted) {
       setState(() {
         _messages.removeWhere((m) => m.isLoading);
-        _addMessage(ChatMessage(id: _uuid.v4(), sender: 'Gemma AI', content: response, isMe: false, isAI: true));
+        _addMessage(ChatMessage(id: _uuid.v4(), sender: 'LLaVA AI', content: response, isMe: false, isAI: true));
         _isLoading = false;
       });
     }
@@ -122,8 +122,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
     _addMessage(ChatMessage(id: _uuid.v4(), sender: 'me', content: text, isMe: true));
 
-    if (widget.isAI || text.startsWith('@gemma ') || text.startsWith('@ai ')) {
-      final prompt = text.replaceFirst(RegExp(r'^@(gemma|ai)\s'), '');
+    if (widget.isAI || text.startsWith('@llava ') || text.startsWith('@ai ')) {
+      final prompt = text.replaceFirst(RegExp(r'^@(llava|ai)\s'), '');
       await _getAiResponse(prompt);
     } else {
       _chat.send(text, widget.peerId);
@@ -136,14 +136,14 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _getAiResponse(String prompt) async {
     setState(() => _isLoading = true);
     final lid = _uuid.v4();
-    _addMessage(ChatMessage(id: lid, sender: 'Gemma AI', content: '...', isMe: false, isAI: true, isLoading: true));
+    _addMessage(ChatMessage(id: lid, sender: 'LLaVA AI', content: '...', isMe: false, isAI: true, isLoading: true));
 
     final resp = await _ai.generate(prompt);
 
     if (mounted) {
       setState(() {
         _messages.removeWhere((m) => m.id == lid);
-        _addMessage(ChatMessage(id: _uuid.v4(), sender: 'Gemma AI', content: resp, isMe: false, isAI: true));
+        _addMessage(ChatMessage(id: _uuid.v4(), sender: 'LLaVA AI', content: resp, isMe: false, isAI: true));
         _isLoading = false;
       });
     }
@@ -172,7 +172,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       color: _isAiReady ? const Color(0xFF4CAF50) : Colors.grey[400], shape: BoxShape.circle,
                     )),
                     const SizedBox(width: 4),
-                    Text(_isAiReady ? 'Gemma-4 Ready' : 'Offline', style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+                    Text(_isAiReady ? 'LLaVA Ready' : 'Offline', style: TextStyle(fontSize: 11, color: Colors.grey[500])),
                   ],
                 ),
               ],
