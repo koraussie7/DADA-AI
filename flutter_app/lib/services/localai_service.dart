@@ -22,7 +22,7 @@ class LocalAIService {
             Uri.parse('$_baseUrl/v1/chat/completions'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
-              'model': 'gemma-4-e4b-it',
+              'model': 'gemma-4-e2b-it',
               'messages': [{'role': 'user', 'content': prompt}],
               'stream': false,
               'max_tokens': 2048,
@@ -62,7 +62,7 @@ class LocalAIService {
             Uri.parse('$_baseUrl/v1/chat/completions'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
-              'model': 'gemma-4-e4b-it',
+              'model': 'gemma-4-e2b-it',
               'messages': [{'role': 'user', 'content': content}],
               'max_tokens': 4096,
               'temperature': 0.7,

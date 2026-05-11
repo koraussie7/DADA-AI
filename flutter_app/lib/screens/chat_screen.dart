@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
@@ -98,7 +98,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final prompt = _textController.text.trim().isEmpty ? 'Describe this image' : _textController.text.trim();
     _textController.clear();
 
-    final bytes = await File(path).readAsBytes();
+    final bytes = await file.readAsBytes();
     final b64 = base64Encode(bytes);
 
     _addMessage(ChatMessage(id: _uuid.v4(), sender: 'me', content: prompt, isMe: true, imagePaths: [path]));

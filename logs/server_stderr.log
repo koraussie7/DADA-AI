@@ -1,6 +1,6 @@
-INFO:     Will watch for changes in these directories: ['C:\\Users\\korau\\.local\\share\\opencode\\worktree\\6fe9dde3327b4756c69d114c2fd28cc19a8413de\\brave-wolf']
-INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [14020] using StatReload
-INFO:     Started server process [1788]
+INFO:     Started server process [1636]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
+ERROR:    [Errno 10048] error while attempting to bind on address ('0.0.0.0', 8000): [winerror 10048] 각 소켓 주소(프로토콜/네트워크 주소/포트)는 하나만 사용할 수 있습니다
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
