@@ -1,4 +1,6 @@
-﻿from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+﻿import base64
+import uuid
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import uvicorn
@@ -137,6 +139,18 @@ async def ai_models():
         models.append({"id": "gemini-flash-latest", "object": "model", "provider": "google"})
     return {"data": models, "object": "list"}
 
+def _detect_mime(b64: str) -> str:
+    header = b64[:30]
+    if header.startswith("/9j"):
+        return "image/jpeg"
+    if header.startswith("iVBOR"):
+        return "image/png"
+    if header.startswith("R0lGOD"):
+        return "image/gif"
+    if header.startswith("UklGR"):
+        return "image/webp"
+    return "image/png"
+
 @app.post("/ai/chat")
 async def ai_chat(request: dict):
     if not request.get("messages"):
@@ -151,11 +165,14 @@ async def ai_chat(request: dict):
             content = last.get("content", last.get("text", ""))
             images = last.get("images", [])
 
-            gemini_model = genai.GenerativeModel(model_name)
+            vision_model = "gemini-2.5-flash" if images else model_name
+            gemini_model = genai.GenerativeModel(vision_model)
             if images:
                 parts = [content] if content else []
                 for b64 in images:
-                    parts.append({"mime_type": "image/png", "data": b64})
+                    raw = base64.b64decode(b64)
+                    mime = _detect_mime(b64)
+                    parts.append({"mime_type": mime, "data": raw})
                 resp = gemini_model.generate_content(parts)
             else:
                 # Build chat history
@@ -402,6 +419,8 @@ async def leaderboard(period: str, limit: int = 50):
 # ── Loops Proxy ──────────────────────────────────────────────────────────────
 LOOPS_API_URL = os.getenv("LOOPS_API_URL", "http://185.55.240.110:8080/api")
 LOOPS_TOKEN = os.getenv("LOOPS_TOKEN", "")
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/root/liberty-web/uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @app.get("/loops/feed")
 async def loops_feed():
@@ -410,7 +429,7 @@ async def loops_feed():
     headers = {"Authorization": f"Bearer {LOOPS_TOKEN}"} if LOOPS_TOKEN else {}
     try:
         async with httpx.AsyncClient(timeout=10) as c:
-            r = await c.get(f"{LOOPS_API_URL}/feed", headers=headers)
+            r = await c.get(f"{LOOPS_API_URL}/web/feed", headers=headers)
             return r.json()
     except Exception as e:
         return {"error": str(e), "data": []}
@@ -422,8 +441,47 @@ async def loops_video(video_id: str):
     headers = {"Authorization": f"Bearer {LOOPS_TOKEN}"} if LOOPS_TOKEN else {}
     try:
         async with httpx.AsyncClient(timeout=10) as c:
-            r = await c.get(f"{LOOPS_API_URL}/video/{video_id}", headers=headers)
+            r = await c.get(f"{LOOPS_API_URL}/v1/video/{video_id}", headers=headers)
             return r.json()
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.post("/loops/upload")
+async def loops_upload(data: dict):
+    b64 = data.get("video", "")
+    caption = data.get("caption", "")
+    if not b64:
+        return {"error": "No video data"}
+    try:
+        raw = base64.b64decode(b64)
+        name = f"{uuid.uuid4().hex}.mp4"
+        path = os.path.join(UPLOAD_DIR, name)
+        with open(path, "wb") as f:
+            f.write(raw)
+
+        reward_points = 10
+        loops_url = None
+        if LOOPS_TOKEN:
+            try:
+                async with httpx.AsyncClient(timeout=30) as c:
+                    r = await c.post(
+                        f"{LOOPS_API_URL}/v1/studio/upload",
+                        data={"caption": caption},
+                        files={"video": (name, raw, "video/mp4")},
+                        headers={"Authorization": f"Bearer {LOOPS_TOKEN}"},
+                    )
+                    if r.status_code == 200:
+                        loops_url = r.json().get("url")
+                        reward_points = 50
+            except Exception as e:
+                log.warning(f"Loops platform upload failed: {e}")
+
+        url = f"/uploads/{name}"
+        log.info(f"Video uploaded: {name} ({len(raw)} bytes) reward={reward_points}")
+        return {
+            "url": url, "name": name, "size": len(raw),
+            "loops_url": loops_url, "reward_points": reward_points,
+        }
     except Exception as e:
         return {"error": str(e)}
 

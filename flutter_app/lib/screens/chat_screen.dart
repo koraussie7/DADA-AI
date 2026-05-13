@@ -136,16 +136,21 @@ class _ChatScreenState extends State<ChatScreen> {
       final bytes = await video.readAsBytes();
       final b64 = base64Encode(bytes);
       final caption = _textController.text.trim();
-      final videoUrl = await _loops.uploadVideo(b64, caption);
+      final result = await _loops.uploadVideo(b64, caption);
       if (!mounted) return;
-      if (videoUrl != null) {
+      if (result != null) {
         _textController.clear();
+        final videoUrl = result['url'] as String? ?? '';
+        final reward = result['reward_points'] as int? ?? 0;
         final fullUrl = 'https://muhantube.com$videoUrl';
         _addMessage(ChatMessage(
           id: _uuid.v4(), sender: 'me', content: '🎬 $fullUrl', isMe: true,
         ));
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Video uploaded!')),
+          SnackBar(
+            content: Text('✅ Video uploaded! (+$reward DADA Point)'),
+            backgroundColor: Colors.deepPurple,
+          ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(

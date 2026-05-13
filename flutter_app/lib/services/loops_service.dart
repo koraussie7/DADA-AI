@@ -83,7 +83,7 @@ class LoopsService {
     return null;
   }
 
-  Future<String?> uploadVideo(String base64Video, String caption) async {
+  Future<Map<String, dynamic>?> uploadVideo(String base64Video, String caption) async {
     try {
       final response = await _client
           .post(
@@ -93,8 +93,7 @@ class LoopsService {
           )
           .timeout(const Duration(seconds: 120));
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return data['url'] as String?;
+        return jsonDecode(response.body) as Map<String, dynamic>;
       }
     } catch (e) {
       debugPrint('[Loops] Upload error: $e');
