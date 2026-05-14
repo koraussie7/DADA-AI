@@ -8,7 +8,9 @@ class LocalAIService {
   final http.Client _client;
   bool _lastHealth = false;
 
-  LocalAIService({String baseUrl = 'http://185.55.243.225:8081'})
+  /// Default AI endpoint — configure via constructor or setter.
+  /// In production, override with your server's address.
+  LocalAIService({String baseUrl = 'http://localhost:8081'})
       : _baseUrl = baseUrl,
         _client = http.Client();
 

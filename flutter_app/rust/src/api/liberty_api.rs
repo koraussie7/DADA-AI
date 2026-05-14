@@ -1,4 +1,4 @@
-use crate::p2p::swarm::P2PSwarm;
+use crate::p2p::swarm::{P2PSwarm, ReceivedMessage, self as p2p_swarm};
 use crate::ai::localai::LocalAIClient;
 use crate::storage::sqlite::SqliteStorage;
 use std::sync::Arc;
@@ -15,6 +15,10 @@ pub struct LibertyCore {
     pub storage: Option<Arc<RwLock<SqliteStorage>>>,
     pub peer_name: String,
     pub is_initialized: bool,
+    /// Channel to send outgoing P2P messages
+    pub msg_tx: Option<flume::Sender<p2p_swarm::AppEvent>>,
+    /// Channel to receive incoming P2P messages (from network)
+    pub msg_rx: Option<flume::Receiver<ReceivedMessage>>,
 }
 
 impl LibertyCore {
@@ -25,15 +29,23 @@ impl LibertyCore {
             storage: None,
             peer_name: String::new(),
             is_initialized: false,
+            msg_tx: None,
+            msg_rx: None,
         }
     }
 }
 
 /// Initialize the Liberty Reach core.
 /// Must be called once before any other function.
+/// Spawns the P2P event loop in the background.
 #[flutter_rust_bridge::frb]
 pub async fn init(peer_name: String, localai_url: String, storage_path: String) -> String {
     let mut core = INSTANCE.write().await;
+
+    // Prevent double initialization
+    if core.is_initialized {
+        return format!("Already initialized as {}", core.peer_name);
+    }
 
     let storage = match SqliteStorage::new(&storage_path) {
         Ok(s) => Arc::new(RwLock::new(s)),
@@ -42,22 +54,54 @@ pub async fn init(peer_name: String, localai_url: String, storage_path: String) 
 
     let ai = LocalAIClient::new(localai_url);
 
+    let identity = Arc::new(peer_name.clone());
+
     let swarm = match P2PSwarm::new(
-        Arc::new(peer_name.clone()),
+        identity.clone(),
         8000,
         None,
+        &storage_path,
     ).await {
         Ok(s) => Arc::new(RwLock::new(s)),
         Err(e) => return format!("P2P error: {}", e),
     };
+
+    // Create channels for the event loop
+    let (msg_tx, msg_rx) = flume::unbounded::<p2p_swarm::AppEvent>();
+    let (incoming_tx, incoming_rx) = flume::unbounded::<ReceivedMessage>();
+
+    // Spawn the P2P event loop in the background
+    let event_loop_handle = swarm.clone();
+    let event_loop_identity = identity.clone();
+    tokio::spawn(async move {
+        p2p_swarm::run_swarm(
+            event_loop_handle,
+            msg_rx,
+            incoming_tx,
+            event_loop_identity,
+        ).await;
+    });
 
     core.swarm = Some(swarm);
     core.ai = Some(ai);
     core.storage = Some(storage);
     core.peer_name = peer_name.clone();
     core.is_initialized = true;
+    core.msg_tx = Some(msg_tx);
+    core.msg_rx = Some(incoming_rx);
 
     format!("Liberty Reach initialized as {}", peer_name)
+}
+
+/// Get the next received P2P message, if any (non-blocking).
+/// Flutter can poll this to check for new messages.
+#[flutter_rust_bridge::frb]
+pub async fn poll_incoming_message() -> Option<ReceivedMessage> {
+    let core = INSTANCE.read().await;
+    match &core.msg_rx {
+        Some(rx) => rx.try_recv().ok(),
+        None => None,
+    }
 }
 
 /// Get the local Peer ID
@@ -84,6 +128,7 @@ pub async fn get_connected_peers() -> Vec<String> {
 }
 
 /// Send a chat message to the P2P network
+/// Uses the channel to avoid lock contention with the event loop
 #[flutter_rust_bridge::frb]
 pub async fn send_message(content: String) -> String {
     let core = INSTANCE.read().await;
@@ -91,20 +136,18 @@ pub async fn send_message(content: String) -> String {
         return "not initialized".to_string();
     }
 
-    let peer_name = core.peer_name.clone();
-    let msg = serde_json::json!({
-        "type": "chat",
-        "sender": peer_name,
-        "content": content,
-        "timestamp": chrono::Utc::now().to_rfc3339(),
-    });
-
-    if let Some(swarm) = &core.swarm {
-        let mut s = swarm.write().await;
-        match s.publish_message(&msg.to_string()) {
+    // Send via channel (event loop handles the actual publish)
+    if let Some(tx) = &core.msg_tx {
+        let peer_name = core.peer_name.clone();
+        match tx.send(p2p_swarm::AppEvent::SendMessage {
+            content: content.clone(),
+        }) {
             Ok(_) => {
+                // Also save to local storage
                 if let Some(storage) = &core.storage {
-                    let _ = storage.write().await.save_message(&peer_name, &content, false);
+                    if let Err(e) = storage.write().await.save_message(&peer_name, &content, false) {
+                        eprintln!("[Storage] Save error: {}", e);
+                    }
                 }
                 content
             }
@@ -123,7 +166,9 @@ pub async fn ask_ai(prompt: String) -> String {
         Some(ai) => match ai.generate(&prompt).await {
             Ok(response) => {
                 if let Some(storage) = &core.storage {
-                    let _ = storage.write().await.save_message("AI", &response, true);
+                    if let Err(e) = storage.write().await.save_message("AI", &response, true) {
+                        eprintln!("[Storage] Save AI msg error: {}", e);
+                    }
                 }
                 response
             }
@@ -141,7 +186,9 @@ pub async fn ask_ai_multimodal(prompt: String, images_base64: Vec<String>) -> St
         Some(ai) => match ai.generate_multimodal(&prompt, images_base64).await {
             Ok(response) => {
                 if let Some(storage) = &core.storage {
-                    let _ = storage.write().await.save_message("AI", &response, true);
+                    if let Err(e) = storage.write().await.save_message("AI", &response, true) {
+                        eprintln!("[Storage] Save multimodal error: {}", e);
+                    }
                 }
                 response
             }

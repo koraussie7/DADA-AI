@@ -31,7 +31,16 @@ async fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
     let identity = Arc::new(cli.identity.clone());
-    let db_path = format!("{}.db", identity);
+    // Use a safe path: sanitize identity name to prevent path traversal
+    let data_dir = std::env::var("HOME")
+        .map(|h| std::path::PathBuf::from(h).join(".liberty").join("data"))
+        .unwrap_or_else(|_| std::path::PathBuf::from("/tmp/.liberty/data"));
+    std::fs::create_dir_all(&data_dir)?;
+    let safe_name: String = cli.identity.chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect();
+    let db_path = data_dir.join(format!("{}.db", safe_name));
+    println!("[Storage] Database path: {:?}", db_path);
 
     let storage = Arc::new(RwLock::new(
         storage::sqlite::SqliteStorage::new(&db_path)?
