@@ -5,16 +5,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import uvicorn
 import os
+import sys
 import sqlite3
 import httpx
 import logging
 import google.generativeai as genai
 from typing import Dict, Optional
 from pydantic import BaseModel
+from fastapi import Request
 
 load_dotenv()
 
-LOCALAI_URL = os.getenv("LOCALAI_URL", "http://localhost:8081")
+LOCALAI_URL = os.getenv("LOCALAI_URL", "http://localhost:11434")
 MINIMA_URL = os.getenv("MINIMA_URL", "https://localhost:9005")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "info").upper()
 
@@ -24,6 +26,13 @@ log = logging.getLogger("dada")
 
 # ── Leaderboard DB ──────────────────────────────────────────────────────────
 LEADERBOARD_DB = os.getenv("LEADERBOARD_DB", "leaderboard.db")
+
+_http_client = None
+def get_http_client():
+    global _http_client
+    if _http_client is None:
+        _http_client = httpx.AsyncClient(timeout=120)
+    return _http_client
 
 def init_leaderboard_db():
     conn = sqlite3.connect(LEADERBOARD_DB)
@@ -51,20 +60,28 @@ def record_points(user_id: str, display_name: str, points: int):
     conn.close()
 
 def get_leaderboard(period: str, limit: int = 50) -> list:
-    where = ""
-    if period == "weekly":
-        where = "AND recorded_at >= datetime('now', '-7 days')"
-    elif period == "monthly":
-        where = "AND recorded_at >= datetime('now', '-30 days')"
-    elif period == "creators":
-        where = "AND display_name LIKE '%[Creator]%'"
-
+    days = {"weekly": 7, "monthly": 30}.get(period)
     conn = sqlite3.connect(LEADERBOARD_DB)
-    rows = conn.execute(
-        f"SELECT user_id, display_name, SUM(points) as total FROM user_points "
-        f"WHERE 1=1 {where} GROUP BY user_id ORDER BY total DESC LIMIT ?",
-        (limit,)
-    ).fetchall()
+    if days:
+        rows = conn.execute(
+            "SELECT user_id, display_name, SUM(points) as total FROM user_points "
+            "WHERE recorded_at >= datetime('now', ? || ' days') "
+            "GROUP BY user_id ORDER BY total DESC LIMIT ?",
+            (f"-{days}", limit)
+        ).fetchall()
+    elif period == "creators":
+        rows = conn.execute(
+            "SELECT user_id, display_name, SUM(points) as total FROM user_points "
+            "WHERE display_name LIKE ? "
+            "GROUP BY user_id ORDER BY total DESC LIMIT ?",
+            ('%[Creator]%', limit)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT user_id, display_name, SUM(points) as total FROM user_points "
+            "GROUP BY user_id ORDER BY total DESC LIMIT ?",
+            (limit,)
+        ).fetchall()
     conn.close()
 
     result = []
@@ -90,14 +107,71 @@ if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
     log.info("Gemini AI configured")
 
+CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY")
+if not CEREBRAS_API_KEY:
+    log.warning("CEREBRAS_API_KEY not set - Hermes agent will fail")
+CEREBRAS_MODEL = os.getenv("CEREBRAS_MODEL", "llama3.1-8b")
+CEREBRAS_API_URL = "https://api.cerebras.ai/v1/chat/completions"
+
+HERMES_AGENT_PROMPT = """You are Hermes, an autonomous AI agent with tool-use capabilities.
+
+You have access to the following tools and capabilities:
+- You can reason step-by-step about complex problems
+- You can generate structured JSON output for function calls
+- You can analyze code, data, and text
+
+When responding:
+1. Think step-by-step before answering
+2. If the user asks for structured data, respond in JSON
+3. Be concise but thorough
+4. You can use the following internal tools by responding with a JSON block:
+   {
+     "tool": "analyze",
+     "input": "what to analyze"
+   }
+   {
+     "tool": "code",
+     "language": "python",
+     "code": "print('hello')"
+   }
+
+Your knowledge cutoff is current. You are powered by Cerebras hardware acceleration."""
+
+# ── Rate Limiting ────────────────────────────────────────────────────────────
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.util import get_remote_address
+    from slowapi.errors import RateLimitExceeded
+    limiter = Limiter(key_func=get_remote_address, default_limits=["30/minute"])
+    _HAS_SLOWAPI = True
+except ImportError:
+    _HAS_SLOWAPI = False
+    limiter = None
+
 app = FastAPI(title="DADA-AI Server", version="0.1.0")
+
+if _HAS_SLOWAPI and limiter:
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+API_KEY = os.getenv("API_KEY", "")
+
+def verify_api_key(request: Request) -> bool:
+    if not API_KEY:
+        return True
+    return request.headers.get("X-API-Key", "") == API_KEY
+
+allowed_origins = os.getenv(
+    "CORS_ORIGINS",
+    "https://privseai.com,https://muhantube.com,https://app.privseai.com"
+).split(",")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key"],
 )
 
 active_connections: Dict[str, WebSocket] = {}
@@ -137,6 +211,10 @@ async def ai_models():
         models.append({"id": "gemini-2.5-pro", "object": "model", "provider": "google"})
         models.append({"id": "gemini-2.0-flash", "object": "model", "provider": "google"})
         models.append({"id": "gemini-flash-latest", "object": "model", "provider": "google"})
+    models.append({"id": CEREBRAS_MODEL, "object": "model", "provider": "cerebras"})
+    models.append({"id": "hermes-agent", "object": "model", "provider": "cerebras"})
+    models.append({"id": "qwen-3-235b-a22b-instruct-2507", "object": "model", "provider": "cerebras"})
+    models.append({"id": "gpt-oss-120b", "object": "model", "provider": "cerebras"})
     return {"data": models, "object": "list"}
 
 def _detect_mime(b64: str) -> str:
@@ -152,36 +230,69 @@ def _detect_mime(b64: str) -> str:
     return "image/png"
 
 @app.post("/ai/chat")
-async def ai_chat(request: dict):
-    if not request.get("messages"):
+async def ai_chat(request: Request):
+    body = await request.json()
+    if not body.get("messages"):
         return {"error": "messages is required"}
-    model_name = request.get("model", "gemma-2-2b-it")
+    model_name = body.get("model", "gemma3:4b")
 
-    # Gemini models (vision-capable)
+    # Always route to Gemini for vision requests regardless of user-selected model
+    msgs = body["messages"]
+    last = msgs[-1]
+    content_raw = last.get("content", last.get("text", ""))
+
+    # Parse OpenAI multimodal format (content as list with image_url parts)
+    images = last.get("images", [])
+    if isinstance(content_raw, list):
+        text_parts = []
+        for part in content_raw:
+            if part.get("type") == "text":
+                text_parts.append(part.get("text", ""))
+            elif part.get("type") == "image_url":
+                url = part.get("image_url", {}).get("url", "")
+                if url.startswith("data:image"):
+                    b64 = url.split(",")[1] if "," in url else url
+                    images.append(b64)
+        if not images:
+            images = last.get("images", [])
+        content_raw = " ".join(text_parts) if text_parts else content_raw
+    last["content"] = content_raw
+    last["images"] = images
+
+    if images and GEMINI_API_KEY:
+        try:
+            content = last.get("content", last.get("text", ""))
+            vision_model = "gemini-2.5-flash"
+            gemini_model = genai.GenerativeModel(vision_model)
+            parts = [content] if content else []
+            for b64 in images:
+                raw = base64.b64decode(b64)
+                mime = _detect_mime(b64)
+                parts.append({"mime_type": mime, "data": raw})
+            resp = gemini_model.generate_content(parts)
+            return {
+                "choices": [{
+                    "message": {"role": "assistant", "content": resp.text},
+                    "index": 0
+                }],
+                "model": vision_model,
+                "object": "chat.completion"
+            }
+        except Exception as e:
+            log.error(f"Gemini vision error: {e}")
+            return {"error": str(e)}
+
+    # Text-only Gemini models
     if model_name.startswith("gemini") and GEMINI_API_KEY:
         try:
-            msgs = request["messages"]
-            last = msgs[-1]
             content = last.get("content", last.get("text", ""))
-            images = last.get("images", [])
-
-            vision_model = "gemini-2.5-flash" if images else model_name
-            gemini_model = genai.GenerativeModel(vision_model)
-            if images:
-                parts = [content] if content else []
-                for b64 in images:
-                    raw = base64.b64decode(b64)
-                    mime = _detect_mime(b64)
-                    parts.append({"mime_type": mime, "data": raw})
-                resp = gemini_model.generate_content(parts)
-            else:
-                # Build chat history
-                history = []
-                for m in msgs[:-1]:
-                    role = "user" if m.get("role") in ("user", "system") else "model"
-                    history.append({"role": role, "parts": [m.get("content", m.get("text", ""))]})
-                chat = gemini_model.start_chat(history=history)
-                resp = chat.send_message(content)
+            gemini_model = genai.GenerativeModel(model_name)
+            history = []
+            for m in msgs[:-1]:
+                role = "user" if m.get("role") in ("user", "system") else "model"
+                history.append({"role": role, "parts": [m.get("content", m.get("text", ""))]})
+            chat = gemini_model.start_chat(history=history)
+            resp = chat.send_message(content)
 
             return {
                 "choices": [{
@@ -196,16 +307,16 @@ async def ai_chat(request: dict):
             return {"error": str(e)}
 
     # LocalAI models
-    body = {
+    local_body = {
         "model": model_name,
-        "messages": request["messages"],
-        "stream": request.get("stream", False),
-        "max_tokens": request.get("max_tokens", 2048),
-        "temperature": request.get("temperature", 0.7),
+        "messages": body["messages"],
+        "stream": body.get("stream", False),
+        "max_tokens": body.get("max_tokens", 2048),
+        "temperature": body.get("temperature", 0.7),
     }
     try:
-        async with httpx.AsyncClient(timeout=120) as c:
-            resp = await c.post(f"{LOCALAI_URL}/v1/chat/completions", json=body)
+        c = get_http_client()
+        resp = await c.post(f"{LOCALAI_URL}/v1/chat/completions", json=local_body)
         if resp.status_code != 200:
             log.warning(f"AI backend returned {resp.status_code}: {resp.text[:200]}")
         return resp.json()
@@ -215,6 +326,287 @@ async def ai_chat(request: dict):
     except Exception as e:
         log.error(f"AI backend error: {e}")
         return {"error": str(e)}
+
+# ── Hermes Agent (Cerebras-powered) ──────────────────────────────────────────
+
+@app.post("/opencode/chat")
+async def opencode_chat(request: dict):
+    if not request.get("messages"):
+        return {"error": "messages is required"}
+    try:
+        msgs = request["messages"]
+        system_prompt = request.get("system", HERMES_AGENT_PROMPT)
+        temperature = request.get("temperature", 0.7)
+        max_tokens = request.get("max_tokens", 4096)
+        stream = request.get("stream", False)
+
+        body = {
+            "model": request.get("model", CEREBRAS_MODEL),
+            "messages": [{"role": "system", "content": system_prompt}] + msgs,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": stream,
+        }
+        headers = {
+            "Authorization": f"Bearer {CEREBRAS_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        c = get_http_client()
+        resp = await c.post(CEREBRAS_API_URL, json=body, headers=headers)
+
+        if resp.status_code != 200:
+            log.error(f"Cerebras error {resp.status_code}: {resp.text[:300]}")
+            return {"error": f"Cerebras API error: {resp.status_code}", "detail": resp.text[:500]}
+
+        return resp.json()
+    except Exception as e:
+        log.error(f"Hermes agent error: {e}")
+        return {"error": str(e)}
+
+# ── OpenCode AI Coding Agent ────────────────────────────────────────────────
+
+OPENCODE_API_KEY = os.getenv("OPENCODE_API_KEY")
+if not OPENCODE_API_KEY:
+    log.warning("OPENCODE_API_KEY not set - OpenCode agent will fail")
+OPENCODE_API_URL = os.getenv("OPENCODE_API_URL", "https://opencode.ai/zen/v1/chat/completions")
+OPENCODE_MODEL = os.getenv("OPENCODE_MODEL", "claude-sonnet-4")
+OPENCODE_AGENT_PROMPT = os.getenv("OPENCODE_AGENT_PROMPT", (
+    "You are an expert coding assistant integrated into Liberty Reach messenger. "
+    "Help users with code generation, debugging, refactoring, and architecture questions. "
+    "Provide clear, concise code examples. "
+    "When appropriate, explain tradeoffs and suggest best practices."
+))
+
+@app.post("/opencode/zen")
+async def opencode_zen(request: dict):
+    if not OPENCODE_API_KEY:
+        return {"error": "OpenCode API key not configured on server"}
+    if not request.get("messages"):
+        return {"error": "messages is required"}
+    try:
+        msgs = request["messages"]
+        system_prompt = request.get("system", OPENCODE_AGENT_PROMPT)
+        temperature = request.get("temperature", 0.7)
+        max_tokens = request.get("max_tokens", 4096)
+        model = request.get("model", OPENCODE_MODEL)
+
+        body = {
+            "model": model,
+            "messages": [{"role": "system", "content": system_prompt}] + msgs,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        headers = {
+            "Authorization": f"Bearer {OPENCODE_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        c = get_http_client()
+        resp = await c.post(OPENCODE_API_URL, json=body, headers=headers)
+
+        if resp.status_code != 200:
+            log.error(f"OpenCode error {resp.status_code}: {resp.text[:300]}")
+            return {"error": f"OpenCode API error: {resp.status_code}", "detail": resp.text[:500]}
+
+        data = resp.json()
+        reply = data["choices"][0]["message"]["content"]
+        return {"reply": reply, "model": model, "provider": "opencode"}
+    except Exception as e:
+        log.error(f"OpenCode error: {e}")
+        return {"error": str(e)}
+
+# ── Hybrid Code Assist (Hermes + OpenCode + Ollama) ─────────────────────────
+
+CODE_KEYWORDS = [
+    "code", "function", "bug", "error", "implement", "refactor",
+    "architecture", "debug", "컴파일", "에러", "코드", "함수",
+]
+
+ARCHITECT_KEYWORDS = [
+    "architecture", "설계", "구조", "system design", "아키텍처",
+    "diagram", "flow", "data flow",
+]
+
+DEBUG_KEYWORDS = [
+    "debug", "버그", "bug", "error", "에러", "fix", "수정",
+    "failed", "fail", "crash",
+]
+
+CODECODE_AGENT_PROMPTS = {
+    "code": (
+        "You are Hermes, an elite coding assistant integrated into Liberty Reach messenger. "
+        "Write clean, production-ready code. Explain your reasoning briefly. "
+        "Provide complete, runnable code examples."
+    ),
+    "debug": (
+        "You are Hermes Debugger. Find the root cause of bugs and errors. "
+        "Explain why the issue occurs, then provide the fix with a brief explanation."
+    ),
+    "architect": (
+        "You are Hermes System Architect. Design scalable, maintainable system architectures. "
+        "Include component relationships, data flow, and technology choices with rationale."
+    ),
+}
+
+def _detect_intent(text: str) -> str:
+    lower = text.lower()
+    if any(w in lower for w in DEBUG_KEYWORDS):
+        return "debug"
+    if any(w in lower for w in ARCHITECT_KEYWORDS):
+        return "architect"
+    if any(w in lower for w in CODE_KEYWORDS):
+        return "code"
+    return "normal"
+
+async def _call_opencode(messages: list, system_prompt: str, model: str = None) -> dict:
+    body = {
+        "model": model or OPENCODE_MODEL,
+        "messages": [{"role": "system", "content": system_prompt}] + messages,
+        "temperature": 0.65,
+        "max_tokens": 4096,
+    }
+    headers = {
+        "Authorization": f"Bearer {OPENCODE_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    c = get_http_client()
+    resp = await c.post(OPENCODE_API_URL, json=body, headers=headers)
+    if resp.status_code != 200:
+        return {"error": f"OpenCode error: {resp.status_code}", "detail": resp.text[:500]}
+    data = resp.json()
+    reply = data["choices"][0]["message"]["content"]
+    return {"reply": reply, "model": body["model"], "provider": "opencode"}
+
+async def _verify_with_local(prompt: str, code: str) -> str:
+    """Verify generated code with Ollama (local). Falls through on timeout/failure."""
+    verify_prompt = (
+        f"Review this code briefly. If you see any bugs or security issues, "
+        f"note them. Otherwise just say 'OK'.\n\n"
+        f"Task: {prompt}\n\nCode:\n{code}"
+    )
+    try:
+        c = get_http_client()
+        resp = await c.post(
+            f"{LOCALAI_URL}/v1/chat/completions",
+            json={
+                "model": "qwen2.5-coder:7b",
+                "messages": [{"role": "user", "content": verify_prompt}],
+                "temperature": 0.3,
+                "max_tokens": 1024,
+            },
+            timeout=httpx.Timeout(8.0),
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            review = data["choices"][0]["message"]["content"]
+            if review.strip() != "OK":
+                code = f"{code}\n\n---\n*Local review: {review}*"
+    except Exception:
+        pass  # Local verification is best-effort
+    return code
+
+@app.post("/ai/code-assist")
+async def code_assist(request: dict):
+    if not request.get("messages"):
+        return {"error": "messages is required"}
+    try:
+        messages = request["messages"]
+        mode = request.get("mode", "auto")
+        user_text = messages[-1].get("content", "")
+
+        # Step 1: Auto-detect intent
+        if mode == "auto":
+            mode = _detect_intent(user_text)
+
+        # Step 2: Route
+        if mode in ("code", "debug", "architect"):
+            if not OPENCODE_API_KEY:
+                # Fallback to local if OpenCode not configured
+                local_body = {
+                    "model": "qwen2.5-coder:7b",
+                    "messages": messages,
+                    "temperature": 0.65,
+                    "max_tokens": 4096,
+                }
+                c = get_http_client()
+                resp = await c.post(f"{LOCALAI_URL}/v1/chat/completions", json=local_body)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    reply = data["choices"][0]["message"]["content"]
+                else:
+                    reply = f"(local error: {resp.status_code})"
+            else:
+                result = await _call_opencode(messages, CODECODE_AGENT_PROMPTS[mode])
+                if "error" in result:
+                    return result
+                reply = result["reply"]
+                # Optional: verify code mode with local Qwen
+                if mode == "code":
+                    reply = await _verify_with_local(user_text, reply)
+            return {"reply": reply, "mode": mode, "provider": "opencode"}
+        else:
+            # Normal mode → existing LocalAI
+            local_body = {
+                "model": request.get("model", "gemma3:4b"),
+                "messages": messages,
+                "temperature": request.get("temperature", 0.7),
+                "max_tokens": request.get("max_tokens", 2048),
+            }
+            c = get_http_client()
+            resp = await c.post(f"{LOCALAI_URL}/v1/chat/completions", json=local_body)
+            data = resp.json()
+            reply = data["choices"][0]["message"]["content"]
+            return {"reply": reply, "mode": "normal", "provider": "local"}
+    except Exception as e:
+        log.error(f"Code assist error: {e}")
+        return {"error": str(e)}
+
+# ── Preference Model ────────────────────────────────────────────────────────
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "preference_model"))
+try:
+    from train_preference_model import predict_preference
+    PREFERENCE_MODEL_AVAILABLE = True
+except Exception as e:
+    log.warning(f"Preference model not available: {e}")
+    PREFERENCE_MODEL_AVAILABLE = False
+
+@app.post("/ai/preference/predict")
+async def preference_predict(request: dict):
+    if not PREFERENCE_MODEL_AVAILABLE:
+        return {"error": "Preference model not trained yet"}
+    prompt = request.get("prompt", "")
+    response_a = request.get("response_a", "")
+    response_b = request.get("response_b", "")
+    if not all([prompt, response_a, response_b]):
+        return {"error": "prompt, response_a, response_b are required"}
+    result = predict_preference(prompt, response_a, response_b)
+    return {"result": result[0], "score": result[1]}
+
+@app.post("/ai/preference/train")
+async def preference_train():
+    try:
+        from train_preference_model import train_preference_model
+        train_preference_model()
+        return {"status": "training completed"}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.post("/ai/preference/feedback")
+async def preference_feedback(request: dict):
+    prompt = request.get("prompt", "")
+    response_a = request.get("response_a", "")
+    response_b = request.get("response_b", "")
+    preferred = request.get("preferred", "")
+    user_id = request.get("user_id", "anonymous")
+    if not all([prompt, response_a, response_b, preferred]):
+        return {"error": "All fields required"}
+    csv_path = os.path.join(os.path.dirname(__file__), "preference_model", "user_preferences.csv")
+    import csv
+    from datetime import datetime
+    with open(csv_path, "a", newline="") as f:
+        w = csv.writer(f)
+        w.writerow([user_id, prompt, response_a, response_b, preferred, datetime.utcnow().isoformat()])
+    return {"status": "feedback saved"}
 
 # ── Minima / DADA Point Reward Endpoints ────────────────────────────────────
 
@@ -292,7 +684,9 @@ async def blockchain_balance():
         return {"error": str(e)}
 
 @app.post("/blockchain/reward")
-async def blockchain_reward(req: RewardRequest):
+async def blockchain_reward(req: RewardRequest, request: Request):
+    if not verify_api_key(request):
+        return {"error": "Invalid or missing API key"}
     points = max(1, req.seconds // {"watch": 15, "ai": 30, "relay": 60}.get(req.action, 60))
     token = "DADAPOINT"
     cmd = f"send {req.user_address} {points} {token}"
@@ -447,7 +841,9 @@ async def loops_video(video_id: str):
         return {"error": str(e)}
 
 @app.post("/loops/upload")
-async def loops_upload(data: dict):
+async def loops_upload(data: dict, request: Request):
+    if not verify_api_key(request):
+        return {"error": "Invalid or missing API key"}
     b64 = data.get("video", "")
     caption = data.get("caption", "")
     if not b64:
@@ -500,6 +896,67 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
     except WebSocketDisconnect:
         active_connections.pop(client_id, None)
         log.info(f"WebSocket disconnected: {client_id}")
+
+# ── Commerce Endpoints ────────────────────────────────────────────────────────
+
+COMMERCE_PRODUCTS = [
+    {"id": "1", "name": "Wireless Earbuds Pro", "price": 45000, "image_url": "", "badge": "HOT", "reward_points": 300},
+    {"id": "2", "name": "Smart Watch Ultra", "price": 89000, "image_url": "", "badge": "NEW", "reward_points": 500},
+    {"id": "3", "name": "AI Speaker Mini", "price": 32000, "image_url": "", "badge": "50% OFF", "reward_points": 200},
+    {"id": "4", "name": "LED Desk Lamp", "price": 15000, "image_url": "", "reward_points": 100},
+    {"id": "5", "name": "Mechanical Keyboard", "price": 55000, "image_url": "", "badge": "BEST", "reward_points": 400},
+    {"id": "6", "name": "USB-C Hub 7-in-1", "price": 22000, "image_url": "", "badge": "SALE", "reward_points": 150},
+    {"id": "7", "name": "Noise Cancelling Headphones", "price": 78000, "image_url": "", "badge": "PREMIUM", "reward_points": 600},
+    {"id": "8", "name": "Portable SSD 1TB", "price": 95000, "image_url": "", "reward_points": 700},
+]
+
+@ app.post("/commerce/analyze")
+async def commerce_analyze(request: dict):
+    video_id = request.get("video_id", "unknown")
+    products = request.get("products", [])
+    try:
+        prompt = (
+            f"You are Hermes AI Commerce Agent. Analyze these products for video {video_id}:\n"
+            + "\n".join(f"- {p.get('name', 'Unknown')} at {p.get('price', 0)} DADA" for p in products)
+            + "\n\nProvide: 1) Product appeal analysis 2) Recommended pricing strategy 3) Cross-sell suggestions"
+        )
+        body = {
+            "model": CEREBRAS_MODEL,
+            "messages": [{"role": "system", "content": HERMES_AGENT_PROMPT}, {"role": "user", "content": prompt}],
+            "temperature": 0.7, "max_tokens": 1024,
+        }
+        headers = {"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"}
+        c = get_http_client()
+        resp = await c.post(CEREBRAS_API_URL, json=body, headers=headers)
+        analysis = resp.json().get("choices", [{}])[0].get("message", {}).get("content", "") if resp.status_code == 200 else ""
+        return {"video_id": video_id, "products": products, "hermes_analysis": analysis}
+    except Exception as e:
+        log.error(f"Commerce analyze error: {e}")
+        return {"video_id": video_id, "products": products, "hermes_analysis": "", "error": str(e)}
+
+@ app.get("/commerce/trending")
+async def commerce_trending():
+    return COMMERCE_PRODUCTS
+
+@ app.post("/commerce/hermes-analyze")
+async def commerce_hermes_analyze(request: dict):
+    video_id = request.get("video_id", "")
+    if not video_id:
+        return {"error": "video_id required"}
+    try:
+        prompt = f"Analyze video {video_id} for commerce potential. Suggest product categories, pricing, and target audience."
+        body = {
+            "model": CEREBRAS_MODEL,
+            "messages": [{"role": "system", "content": HERMES_AGENT_PROMPT}, {"role": "user", "content": prompt}],
+            "temperature": 0.7, "max_tokens": 512,
+        }
+        headers = {"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"}
+        c = get_http_client()
+        resp = await c.post(CEREBRAS_API_URL, json=body, headers=headers)
+        analysis = resp.json().get("choices", [{}])[0].get("message", {}).get("content", "") if resp.status_code == 200 else ""
+        return {"video_id": video_id, "analysis": analysis}
+    except Exception as e:
+        return {"video_id": video_id, "analysis": "", "error": str(e)}
 
 if __name__ == "__main__":
     port = int(os.getenv("SERVER_PORT", 8000))

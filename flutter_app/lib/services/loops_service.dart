@@ -44,7 +44,7 @@ class LoopVideo {
       );
 }
 
-class LoopsService {
+class LoopsService extends ChangeNotifier {
   final String _baseUrl = 'https://muhantube.com';
   final http.Client _client;
 
@@ -101,7 +101,9 @@ class LoopsService {
     return null;
   }
 
+  @override
   void dispose() {
     _client.close();
+    super.dispose();
   }
 }

@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'screens/chat_list_screen.dart';
-import 'screens/chat_screen.dart';
-import 'screens/contacts_screen.dart';
-import 'screens/settings_screen.dart';
-import 'screens/leaderboard_screen.dart';
-import 'screens/loops_screen.dart';
+import 'package:provider/provider.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'core/theme/app_theme.dart';
+import 'widgets/bottom_nav.dart';
+import 'services/wallet_service.dart';
+import 'services/commerce_service.dart';
+import 'services/chat_service.dart';
+import 'services/loops_service.dart';
+import 'services/hybrid_ai_service.dart';
+import 'services/leaderboard_service.dart';
+import 'services/p2p_service.dart';
+import 'services/opencode_service.dart';
+import 'bloc/chat_bloc.dart';
 import 'screens/loops_player_screen.dart';
 
 void main() {
@@ -13,121 +20,52 @@ void main() {
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
   ]);
-  runApp(const LibertyReachApp());
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => WalletService()),
+        ChangeNotifierProvider(create: (_) => CommerceService()),
+        ChangeNotifierProvider(create: (_) => ChatService()),
+        ChangeNotifierProvider(create: (_) => LoopsService()),
+        ChangeNotifierProvider(create: (_) => HybridAIService()),
+        Provider(create: (_) => LeaderboardService()),
+        Provider(create: (_) => P2PService()),
+        Provider(create: (_) => OpenCodeService()),
+      ],
+      child: BlocProvider(
+        create: (_) => ChatBloc(),
+        child: const MyApp(),
+      ),
+    ),
+  );
 }
 
-class LibertyReachApp extends StatelessWidget {
-  const LibertyReachApp({super.key});
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Liberty Reach',
+      title: 'DADA-AI',
       debugShowCheckedModeBanner: false,
-      theme: _buildTheme(),
-      home: const MainScreen(),
-      onGenerateRoute: _onGenerateRoute,
-    );
-  }
-
-  ThemeData _buildTheme() {
-    const primaryColor = Color(0xFFFEE500);
-    return ThemeData(
-      brightness: Brightness.dark,
-      primaryColor: primaryColor,
-      scaffoldBackgroundColor: const Color(0xFF0D0D0D),
-      appBarTheme: const AppBarTheme(
-        backgroundColor: Color(0xFF1A1A1A),
-        foregroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: false,
-        titleTextStyle: TextStyle(
-          color: Colors.white,
-          fontSize: 20,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: primaryColor,
-        brightness: Brightness.dark,
-      ),
-      useMaterial3: true,
-    );
-  }
-
-  Route<dynamic>? _onGenerateRoute(RouteSettings settings) {
-    switch (settings.name) {
-      case '/loops/player':
-        final args = settings.arguments;
-        int index = 0;
-        if (args is int) {
-          index = args;
-        } else if (args is Map<String, dynamic>) {
-          index = args['index'] as int? ?? 0;
+      theme: AppTheme.darkTheme,
+      home: const MainBottomNav(),
+      onGenerateRoute: (settings) {
+        if (settings.name == '/loops/player') {
+          final args = settings.arguments;
+          if (args is LoopVideo) {
+            return MaterialPageRoute(
+              builder: (_) => LoopsPlayerScreen(videoIndex: 0, video: args),
+            );
+          }
+          if (args is int) {
+            return MaterialPageRoute(
+              builder: (_) => LoopsPlayerScreen(videoIndex: args),
+            );
+          }
         }
-        return MaterialPageRoute(
-          builder: (_) => LoopsPlayerScreen(videoIndex: index),
-        );
-    }
-    return null;
-  }
-}
-
-class MainScreen extends StatefulWidget {
-  const MainScreen({super.key});
-
-  @override
-  State<MainScreen> createState() => _MainScreenState();
-}
-
-class _MainScreenState extends State<MainScreen> {
-  int _currentIndex = 0;
-
-  final List<Widget> _screens = const [
-    ChatListScreen(),
-    LoopsScreen(),
-    LeaderboardScreen(),
-    ContactsScreen(),
-    SettingsScreen(),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: _screens[_currentIndex],
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (i) => setState(() => _currentIndex = i),
-        backgroundColor: const Color(0xFF1A1A1A),
-        indicatorColor: const Color(0xFFFEE500).withOpacity(0.3),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.chat_outlined),
-            selectedIcon: Icon(Icons.chat),
-            label: 'Chat',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.local_fire_department_outlined),
-            selectedIcon: Icon(Icons.local_fire_department),
-            label: 'Loops',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.emoji_events_outlined),
-            selectedIcon: Icon(Icons.emoji_events),
-            label: 'Ranking',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.people_outline),
-            selectedIcon: Icon(Icons.people),
-            label: 'Contacts',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
-        ],
-      ),
+        return null;
+      },
     );
   }
 }

@@ -1,2 +1,2 @@
-// User profile - settings, preferences, identity
-// Feature module: profile
+export 'data.dart';
+export 'presentation.dart';

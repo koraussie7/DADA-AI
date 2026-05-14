@@ -44,6 +44,44 @@ class HybridAIService extends ChangeNotifier {
     }
   }
 
+  Future<Map<String, dynamic>> codeAssist({
+    required String prompt,
+    String mode = 'auto',
+    String? systemPrompt,
+  }) async {
+    try {
+      final body = {
+        'messages': [
+          if (systemPrompt != null) {'role': 'system', 'content': systemPrompt},
+          {'role': 'user', 'content': prompt},
+        ],
+        'mode': mode,
+        'max_tokens': 4096,
+      };
+
+      final response = await _client
+          .post(
+            Uri.parse('$_baseUrl/ai/code-assist'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 120));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {
+          'reply': data['reply']?.toString().trim() ?? '(no response)',
+          'mode': data['mode'] ?? mode,
+          'provider': data['provider'] ?? 'local',
+        };
+      }
+      return {'reply': '(error: ${response.statusCode})', 'mode': mode};
+    } catch (e) {
+      debugPrint('[HybridAI] Code assist error: $e');
+      return {'reply': '(error: $e)', 'mode': mode};
+    }
+  }
+
   @override
   void dispose() {
     _client.close();

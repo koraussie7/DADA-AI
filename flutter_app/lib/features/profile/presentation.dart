@@ -1,1 +1,1 @@
-/// Presentation layer for profile feature
+export '../../screens/settings_screen.dart';

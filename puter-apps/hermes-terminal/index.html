@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hermes — DADA-AI</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="root">
+  <div id="sidebar">
+    <div id="logo">
+      <span class="logo-icon">🤖</span>
+      <span class="logo-text">Hermes</span>
+    </div>
+    <div id="mode-group">
+      <button class="mode-btn active" data-mode="auto">Auto</button>
+      <button class="mode-btn" data-mode="code">Code</button>
+      <button class="mode-btn" data-mode="debug">Debug</button>
+      <button class="mode-btn" data-mode="architect">Architect</button>
+      <button class="mode-btn" data-mode="normal">Normal</button>
+    </div>
+    <div id="controls">
+      <label class="toggle-row">
+        <span>Local Verify</span>
+        <input type="checkbox" id="verify-toggle" checked>
+        <span class="toggle-slider"></span>
+      </label>
+      <button id="clear-btn" class="ctrl-btn">Clear Chat</button>
+    </div>
+    <div id="status">
+      <div class="status-row"><span class="dot green"></span>OpenCode: Ready</div>
+      <div class="status-row"><span class="dot yellow"></span>Ollama: Checking</div>
+      <div class="status-row small" id="model-info">claude-sonnet-4</div>
+    </div>
+    <div id="version">v1.0.0</div>
+  </div>
+  <div id="main">
+    <div id="messages"></div>
+    <div id="input-area">
+      <textarea id="input" placeholder="Ask Hermes anything..." rows="3"></textarea>
+      <button id="send-btn" disabled>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

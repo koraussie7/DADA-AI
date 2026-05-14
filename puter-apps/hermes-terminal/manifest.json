@@ -1,0 +1,9 @@
+{
+  "name": "Hermes",
+  "icon": "🤖",
+  "description": "DADA-AI Chief Architect & Coding Agent — powered by OpenCode claude-sonnet-4 with local Ollama verification",
+  "entrypoint": "index.html",
+  "version": "1.0.0",
+  "author": "DADA-AI",
+  "permissions": ["network"]
+}

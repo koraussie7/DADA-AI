@@ -1,1 +1,1 @@
-/// Presentation layer for voice feature
+// Voice UI components (STT button, TTS toggle, voice circle)

@@ -12,10 +12,10 @@ impl LocalAIClient {
         Self { client: Client::new(), base_url }
     }
 
-    /// Text-only chat (gemma-4-e4b-it)
+    /// Text-only chat (gemma3:4b)
     pub async fn generate(&self, prompt: &str) -> anyhow::Result<String> {
         let payload = json!({
-            "model": "gemma-4-e4b-it",
+            "model": "gemma3:4b",
             "messages": [{"role": "user", "content": prompt}],
             "stream": false,
             "max_tokens": 2048,
@@ -40,7 +40,7 @@ impl LocalAIClient {
             .to_string())
     }
 
-    /// Multimodal (text + images) via gemma-4-e4b-it with mmproj
+    /// Multimodal (text + images) via gemma3:4b with mmproj
     pub async fn generate_multimodal(
         &self,
         text: &str,
@@ -58,7 +58,7 @@ impl LocalAIClient {
         }
 
         let payload = json!({
-            "model": "gemma-4-e4b-it",
+            "model": "gemma3:4b",
             "messages": [{"role": "user", "content": content}],
             "max_tokens": 4096,
             "temperature": 0.7,

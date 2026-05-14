@@ -9,6 +9,8 @@ import '../models/chat_message.dart';
 import '../services/localai_service.dart';
 import '../services/chat_service.dart';
 import '../services/loops_service.dart';
+import '../services/hybrid_ai_service.dart';
+import '../core/design_system/app_colors.dart';
 import '../widgets/message_bubble.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -43,6 +45,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isUploadingVideo = false;
   List<String> _pendingImages = [];
   StreamSubscription? _chatSub;
+  String _mode = 'auto';
 
   @override
   void initState() {
@@ -186,14 +189,65 @@ class _ChatScreenState extends State<ChatScreen> {
     final imagesToSend = List<String>.from(_pendingImages);
     setState(() => _pendingImages = []);
 
+    // Determine mode: manual override or auto-detect
+    final effectiveMode = _mode == 'auto' ? _detectIntent(text) : _mode;
+
     if (widget.isAI || text.startsWith('@gemma ') || text.startsWith('@ai ') || text.startsWith('@gemini ') || hadImages) {
       final prompt = text.replaceFirst(RegExp(r'^@(gemma|ai|gemini)\s'), '');
-      await _getAiResponse(prompt, images: hadImages ? imagesToSend : null);
+
+      if (effectiveMode != 'normal' && widget.isAI) {
+        await _getCodeAssistResponse(prompt, mode: effectiveMode);
+      } else {
+        await _getAiResponse(prompt, images: hadImages ? imagesToSend : null);
+      }
+    } else if (effectiveMode != 'normal') {
+      await _getCodeAssistResponse(text, mode: effectiveMode);
     } else {
       _chat.send(text, widget.peerId);
       Future.delayed(const Duration(seconds: 1), () {
         if (mounted) _addMessage(ChatMessage(id: _uuid.v4(), sender: widget.peerName, content: 'Reply: "$text"', isMe: false));
       });
+    }
+  }
+
+  String _detectIntent(String text) {
+    final lower = text.toLowerCase();
+    if (['debug', 'bug', 'error', '에러', 'fix', 'crash', 'fail'].any((w) => lower.contains(w))) return 'debug';
+    if (['architecture', '설계', '구조', '아키텍처', 'system design'].any((w) => lower.contains(w))) return 'architect';
+    if (['code', 'function', 'implement', 'refactor', '컴파일', '코드', '함수'].any((w) => lower.contains(w))) return 'code';
+    return 'normal';
+  }
+
+  Future<void> _getCodeAssistResponse(String prompt, {String mode = 'code'}) async {
+    setState(() => _isLoading = true);
+    final lid = _uuid.v4();
+    _addMessage(ChatMessage(id: lid, sender: 'Hermes', content: '...', isMe: false, isAI: true, isLoading: true));
+
+    try {
+      final ai = HybridAIService();
+      final result = await ai.codeAssist(prompt: prompt, mode: mode);
+      final resp = result['reply'] as String? ?? '(no response)';
+
+      if (mounted) {
+        setState(() {
+          _messages.removeWhere((m) => m.id == lid);
+          _addMessage(ChatMessage(
+            id: _uuid.v4(), sender: 'Hermes [${result['mode']}]',
+            content: resp, isMe: false, isAI: true,
+          ));
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _messages.removeWhere((m) => m.id == lid);
+          _addMessage(ChatMessage(
+            id: _uuid.v4(), sender: 'Hermes', content: 'Error: $e', isMe: false, isAI: true,
+          ));
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -356,8 +410,48 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
             ),
+          if (widget.isAI) _buildModeChips(),
           _buildInput(),
         ],
+      ),
+    );
+  }
+
+  Widget _buildModeChips() {
+    const modes = ['auto', 'code', 'debug', 'architect'];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      color: const Color(0xFF0D0D1A),
+      child: Row(
+        children: modes.map((m) {
+          final selected = _mode == m;
+          final label = m == 'auto' ? 'Auto' : m[0].toUpperCase() + m.substring(1);
+          return Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: GestureDetector(
+              onTap: () => setState(() => _mode = m),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: selected ? AppColors.primary : AppColors.surfaceLight,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: selected ? AppColors.primaryLight : Colors.white24,
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                    color: selected ? Colors.white : AppColors.textSecondary,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
       ),
     );
   }

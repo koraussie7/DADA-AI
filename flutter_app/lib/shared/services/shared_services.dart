@@ -1,1 +1,3 @@
-/// Shared services (api, db, etc.)
+export '../../services/hybrid_ai_service.dart';
+export '../../services/localai_service.dart';
+export '../../services/p2p_service.dart';

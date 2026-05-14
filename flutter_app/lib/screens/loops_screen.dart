@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/loops_service.dart';
 import '../widgets/p2p_video_player.dart';
+import 'loops_player_screen.dart';
 
 class LoopsScreen extends StatefulWidget {
   const LoopsScreen({super.key});
@@ -48,6 +49,15 @@ class _LoopsScreenState extends State<LoopsScreen> {
     }
   }
 
+  void _openPlayer(int index, {LoopVideo? video}) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LoopsPlayerScreen(videoIndex: index, video: video),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _service.dispose();
@@ -63,42 +73,36 @@ class _LoopsScreenState extends State<LoopsScreen> {
       );
     }
 
-    if (_videos.isNotEmpty) {
-      return Scaffold(
-        appBar: const _LoopsAppBar(),
-        body: ListView.separated(
-          padding: const EdgeInsets.all(12),
-          itemCount: _videos.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 16),
-          itemBuilder: (_, i) {
-            final v = _videos[i];
-            return ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: P2PVideoPlayer(
-                videoUrl: v.videoUrl ?? v.thumbnailUrl ?? '',
-                title: v.title,
-                uploader: v.creator,
-              ),
-            );
-          },
-        ),
-      );
-    }
+    final useFallback = _videos.isEmpty;
+    final items = useFallback ? _fallbackVideos.map((f) => (
+      videoUrl: f.url,
+      title: f.title,
+      creator: f.uploader,
+      video: null as LoopVideo?,
+    )).toList() : _videos.map((v) => (
+      videoUrl: v.videoUrl ?? v.thumbnailUrl ?? '',
+      title: v.title,
+      creator: v.creator,
+      video: v,
+    )).toList();
 
     return Scaffold(
       appBar: const _LoopsAppBar(),
       body: ListView.separated(
         padding: const EdgeInsets.all(12),
-        itemCount: _fallbackVideos.length,
+        itemCount: items.length,
         separatorBuilder: (_, __) => const SizedBox(height: 16),
         itemBuilder: (_, i) {
-          final v = _fallbackVideos[i];
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: P2PVideoPlayer(
-              videoUrl: v.url,
-              title: v.title,
-              uploader: v.uploader,
+          final item = items[i];
+          return GestureDetector(
+            onTap: () => _openPlayer(i, video: item.video),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: P2PVideoPlayer(
+                videoUrl: item.videoUrl,
+                title: item.title,
+                uploader: item.creator,
+              ),
             ),
           );
         },

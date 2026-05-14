@@ -81,6 +81,8 @@ impl P2PSwarm {
 
         let chat_topic = gossipsub::IdentTopic::new(CHAT_TOPIC);
         swarm.behaviour_mut().gossipsub.subscribe(&chat_topic)?;
+        let commerce_topic = gossipsub::IdentTopic::new(crate::p2p::commerce::COMMERCE_TOPIC);
+        swarm.behaviour_mut().gossipsub.subscribe(&commerce_topic)?;
 
         if let Some(bootstrap_addr) = bootstrap {
             let addr: Multiaddr = bootstrap_addr.parse()?;
@@ -100,6 +102,15 @@ impl P2PSwarm {
 
     pub fn publish_message(&mut self, message: &str) -> anyhow::Result<()> {
         let topic = gossipsub::IdentTopic::new(CHAT_TOPIC);
+        self.swarm.behaviour_mut().gossipsub.publish(
+            topic,
+            message.as_bytes(),
+        )?;
+        Ok(())
+    }
+
+    pub fn publish_commerce(&mut self, message: &str) -> anyhow::Result<()> {
+        let topic = gossipsub::IdentTopic::new(crate::p2p::commerce::COMMERCE_TOPIC);
         self.swarm.behaviour_mut().gossipsub.publish(
             topic,
             message.as_bytes(),
