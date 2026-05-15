@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class LocalAIService {
-  final String _baseUrl = 'https://muhantube.com';
+  late final String _baseUrl;
   final http.Client _client;
   bool _lastHealth = false;
   String _selectedModel = 'gemini-2.5-flash';
@@ -12,7 +12,7 @@ class LocalAIService {
 
   /// Default AI endpoint — configure via constructor or setter.
   /// In production, override with your server's address.
-  LocalAIService({String baseUrl = 'http://localhost:8081'})
+  LocalAIService({String baseUrl = 'https://muhantube.com'})
       : _baseUrl = baseUrl,
         _client = http.Client();
 

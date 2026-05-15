@@ -114,7 +114,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final lid = _uuid.v4();
       _addMessage(ChatMessage(id: lid, sender: 'Gemma AI', content: 'Analyzing...', isMe: false, isAI: true, isLoading: true));
 
-      final response = await _ai.generateMultimodal(prompt, [b64]);
+      final response = await _ai.generate(prompt, images: [b64]);
 
       if (mounted) {
         setState(() {
@@ -363,7 +363,7 @@ class _ChatScreenState extends State<ChatScreen> {
               tooltip: 'Add image',
               onSelected: (v) {
                 if (v == 'gallery') _pickImage();
-                if (v == 'camera') _pickCamera();
+                if (v == 'camera') _pickImage(); // camera via browser
               },
               itemBuilder: (_) => [
                 const PopupMenuItem(value: 'gallery', child: ListTile(leading: Icon(Icons.photo_library), title: Text('Gallery'), dense: true)),
