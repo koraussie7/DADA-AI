@@ -1,6 +1,7 @@
 import base64
 import json
 import uuid
+from datetime import datetime
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
@@ -1219,7 +1220,6 @@ async def commerce_hermes_analyze(request: dict):
         return {"video_id": video_id, "analysis": "", "error": str(e)}
 
 # ── Group Chat Management ─────────────────────────────────────────────────────
-import uuid as uuid_lib
 
 GROUPS_FILE = os.getenv("GROUPS_FILE", "groups.json")
 groups_db: dict = {}
@@ -1248,7 +1248,7 @@ async def create_group(request: dict):
     name = request.get("name", "New Group")
     members = request.get("members", [])
     creator = request.get("creator", "unknown")
-    group_id = uuid_lib.uuid4().hex[:12]
+    group_id = uuid.uuid4().hex[:12]
 
     # Ensure creator is in members
     all_members = list(members)
@@ -1260,7 +1260,7 @@ async def create_group(request: dict):
         "name": name,
         "members": all_members,
         "created_at": datetime.utcnow().isoformat(),
-        "invite_code": uuid_lib.uuid4().hex[:8],
+        "invite_code": uuid.uuid4().hex[:8],
     }
     groups_db[group_id] = group
     _save_groups()
@@ -1307,7 +1307,7 @@ INFERENCE_TASKS: dict = {}
 
 @app.post("/inference/submit")
 async def inference_submit(request: dict):
-    task_id = uuid_lib.uuid4().hex
+    task_id = uuid.uuid4().hex
     task_type = request.get("type", "text_completion")
     prompt = request.get("prompt", "")
     images = request.get("images", [])
