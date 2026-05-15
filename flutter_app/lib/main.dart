@@ -33,23 +33,23 @@ class LibertyReachApp extends StatelessWidget {
   ThemeData _buildTheme() {
     const primaryColor = Color(0xFFFEE500);
     return ThemeData(
-      brightness: Brightness.dark,
+      brightness: Brightness.light,
       primaryColor: primaryColor,
-      scaffoldBackgroundColor: const Color(0xFF0D0D0D),
+      scaffoldBackgroundColor: const Color(0xFFF5F5F5),
       appBarTheme: const AppBarTheme(
-        backgroundColor: Color(0xFF1A1A1A),
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
         elevation: 0,
         centerTitle: false,
         titleTextStyle: TextStyle(
-          color: Colors.white,
+          color: Colors.black87,
           fontSize: 20,
           fontWeight: FontWeight.w700,
         ),
       ),
       colorScheme: ColorScheme.fromSeed(
         seedColor: primaryColor,
-        brightness: Brightness.dark,
+        brightness: Brightness.light,
       ),
       useMaterial3: true,
     );
@@ -98,8 +98,10 @@ class _MainScreenState extends State<MainScreen> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (i) => setState(() => _currentIndex = i),
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: Colors.white,
         indicatorColor: const Color(0xFFFEE500).withOpacity(0.3),
+        shadowColor: Colors.black12,
+        surfaceTintColor: Colors.transparent,
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.chat_outlined),

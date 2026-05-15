@@ -308,16 +308,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return Scaffold(
       // Gradient 배경
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFFF8F9FA),
-              Color(0xFFF0F0F0),
-            ],
-          ),
-        ),
+        color: Colors.transparent,
         child: SafeArea(
           child: Column(
             children: [
@@ -342,16 +333,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildAppBar() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
+      color: Colors.white,
       child: Row(
         children: [
           // Back button
