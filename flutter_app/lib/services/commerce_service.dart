@@ -60,10 +60,13 @@ class CommerceService extends ChangeNotifier {
   bool _isLive = false;
   int _viewerCount = 0;
   CommerceRecommendation? _currentRecommendation;
+  List<Product> _trendingCache = [];
+  bool _trendingLoaded = false;
 
   bool get isLive => _isLive;
   int get viewerCount => _viewerCount;
   CommerceRecommendation? get currentRecommendation => _currentRecommendation;
+  List<Product> get trendingProductsCache => _trendingCache;
 
   Future<void> startLiveCommerce(String videoId, List<Product> products) async {
     _isLive = true;
@@ -102,18 +105,21 @@ class CommerceService extends ChangeNotifier {
   }
 
   Future<List<Product>> trendingProducts() async {
+    if (_trendingLoaded) return _trendingCache;
     try {
       final resp = await _client
           .get(Uri.parse('$_baseUrl/commerce/trending'))
           .timeout(const Duration(seconds: 10));
       if (resp.statusCode == 200) {
         final list = jsonDecode(resp.body) as List? ?? [];
-        return list.map((e) => Product.fromJson(e)).toList();
+        _trendingCache = list.map((e) => Product.fromJson(e)).toList();
+        _trendingLoaded = true;
+        notifyListeners();
       }
     } catch (e) {
       debugPrint('[Commerce] trending error: $e');
     }
-    return [];
+    return _trendingCache;
   }
 
   Future<String?> hermesAnalysis(String videoId) async {

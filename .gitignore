@@ -22,3 +22,35 @@ localai/models/openmythos/
 # OS
 .DS_Store
 Thumbs.db
+
+# Scratch test files
+hermes_*.json
+test_*.json
+test_*.py
+test_app*.js
+ask_hermes*.py
+create_test_json.py
+train_preference_model.py
+user_preferences.csv
+vision_test.json
+localai_test.json
+localai_service.dart
+
+# Nginx config copies
+muhantube.nginx
+muhantube_nginx.conf
+privseai_nginx
+
+# Docs
+DADA-AI Server Code Review.md
+TASK_TO_CODER.md
+
+# Logs
+logs/
+__pycache__/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

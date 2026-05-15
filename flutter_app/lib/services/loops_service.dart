@@ -47,6 +47,9 @@ class LoopVideo {
 class LoopsService extends ChangeNotifier {
   final String _baseUrl = 'https://muhantube.com';
   final http.Client _client;
+  List<LoopVideo> _feed = [];
+
+  List<LoopVideo> get feed => _feed;
 
   LoopsService() : _client = http.Client();
 
@@ -59,13 +62,19 @@ class LoopsService extends ChangeNotifier {
         final data = jsonDecode(response.body);
         final list = data['data'] as List? ?? [];
         if (list.isNotEmpty) {
-          return list.map((e) => LoopVideo.fromJson(e as Map<String, dynamic>)).toList();
+          _feed = list.map((e) => LoopVideo.fromJson(e as Map<String, dynamic>)).toList();
+          notifyListeners();
+          return _feed;
         }
       }
     } catch (e) {
       debugPrint('[Loops] Feed error: $e');
     }
-    return [];
+    if (_feed.isEmpty) {
+      _feed = List.generate(12, (i) => LoopVideo.demo(i));
+      notifyListeners();
+    }
+    return _feed;
   }
 
   Future<LoopVideo?> getVideo(String videoId) async {
