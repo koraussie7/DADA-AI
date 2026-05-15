@@ -10,7 +10,11 @@ class LocalAIService {
   String _selectedModel = 'gemini-2.5-flash';
   List<ModelInfo> _availableModels = [];
 
-  LocalAIService() : _client = http.Client();
+  /// Default AI endpoint — configure via constructor or setter.
+  /// In production, override with your server's address.
+  LocalAIService({String baseUrl = 'http://localhost:8081'})
+      : _baseUrl = baseUrl,
+        _client = http.Client();
 
   String get selectedModel => _selectedModel;
   List<ModelInfo> get availableModels => List.unmodifiable(_availableModels);

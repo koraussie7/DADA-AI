@@ -101,18 +101,37 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _pickCamera() async {
-    final XFile? image = await _picker.pickImage(
-      source: ImageSource.camera,
-      maxWidth: 1024,
-      maxHeight: 1024,
-    );
-    if (image != null) {
-      final bytes = await image.readAsBytes();
+  Future<void> _sendImage(String path) async {
+    setState(() => _isLoading = true);
+    final prompt = _textController.text.trim().isEmpty ? 'Describe this image' : _textController.text.trim();
+    _textController.clear();
+
+    try {
+      final bytes = await File(path).readAsBytes();
       final b64 = base64Encode(bytes);
+
+      _addMessage(ChatMessage(id: _uuid.v4(), sender: 'me', content: prompt, isMe: true, imagePaths: [path]));
+      final lid = _uuid.v4();
+      _addMessage(ChatMessage(id: lid, sender: 'Gemma AI', content: 'Analyzing...', isMe: false, isAI: true, isLoading: true));
+
+      final response = await _ai.generateMultimodal(prompt, [b64]);
+
       if (mounted) {
-        setState(() => _pendingImages.add(b64));
+        setState(() {
+          _messages.removeWhere((m) => m.id == lid);
+          _addMessage(ChatMessage(id: _uuid.v4(), sender: 'Gemma AI', content: response, isMe: false, isAI: true));
+        });
       }
+    } catch (e) {
+      debugPrint('[Chat] Image error: $e');
+      if (mounted) {
+        setState(() {
+          _messages.removeWhere((m) => m.isLoading);
+          _addMessage(ChatMessage(id: _uuid.v4(), sender: 'Gemma AI', content: 'Error: ${e.toString().length > 100 ? "Request failed" : e.toString()}', isMe: false, isAI: true));
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -142,7 +161,11 @@ class _ChatScreenState extends State<ChatScreen> {
       final prompt = text.replaceFirst(RegExp(r'^@(gemma|ai|gemini)\s'), '');
       await _getAiResponse(prompt, images: hadImages ? imagesToSend : null);
     } else {
-      _chat.send(text, widget.peerId);
+      try {
+        _chat.send(text, widget.peerId);
+      } catch (e) {
+        debugPrint('[Chat] Send error: $e');
+      }
       Future.delayed(const Duration(seconds: 1), () {
         if (mounted) _addMessage(ChatMessage(id: _uuid.v4(), sender: widget.peerName, content: 'Reply: "$text"', isMe: false));
       });
@@ -154,14 +177,25 @@ class _ChatScreenState extends State<ChatScreen> {
     final lid = _uuid.v4();
     _addMessage(ChatMessage(id: lid, sender: _modelName, content: '...', isMe: false, isAI: true, isLoading: true));
 
-    final resp = await _ai.generate(prompt, images: images);
+    try {
+      final resp = await _ai.generate(prompt, images: images);
 
-    if (mounted) {
-      setState(() {
-        _messages.removeWhere((m) => m.id == lid);
-        _addMessage(ChatMessage(id: _uuid.v4(), sender: _modelName, content: resp, isMe: false, isAI: true));
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _messages.removeWhere((m) => m.id == lid);
+          _addMessage(ChatMessage(id: _uuid.v4(), sender: _modelName, content: resp, isMe: false, isAI: true));
+        });
+      }
+    } catch (e) {
+      debugPrint('[Chat] AI error: $e');
+      if (mounted) {
+        setState(() {
+          _messages.removeWhere((m) => m.id == lid);
+          _addMessage(ChatMessage(id: _uuid.v4(), sender: 'Gemma AI', content: 'Error: ${e.toString().length > 100 ? "Request failed" : e.toString()}', isMe: false, isAI: true));
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 

@@ -6,6 +6,7 @@ use libp2p::{
 use libp2p::gossipsub::MessageAuthenticity;
 use libp2p::swarm::{NetworkBehaviour, SwarmEvent};
 use futures::StreamExt;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
@@ -14,6 +15,47 @@ use crate::ai::localai::LocalAIClient;
 use crate::storage::sqlite::SqliteStorage;
 
 pub const CHAT_TOPIC: &str = "liberty/chat";
+pub const KEY_DIR: &str = ".liberty/keys";
+
+/// Load or generate a persistent Ed25519 keypair.
+/// Stores the key as a hex-encoded 32-byte secret in a file
+/// derived from `identity_name`, so the Peer ID survives restarts.
+fn load_or_create_keypair(identity_name: &str) -> anyhow::Result<identity::Keypair> {
+    let key_path = get_key_path(identity_name);
+    if let Some(parent) = key_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    // Try to load existing key
+    if key_path.exists() {
+        let bytes = std::fs::read(&key_path)?;
+        if bytes.len() == 32 {
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(&bytes);
+            return Ok(identity::Keypair::ed25519_from_bytes(arr)
+                .map_err(|e| anyhow::anyhow!("Invalid saved key: {}", e))?);
+        }
+    }
+
+    // Generate new key
+    let keypair = identity::Keypair::generate_ed25519();
+    let secret = keypair.secret();
+    let secret_bytes = secret.as_ref();
+    if secret_bytes.len() == 32 {
+        let _ = std::fs::write(&key_path, secret_bytes);
+        println!("[P2P] Generated new identity key at {:?}", key_path);
+    }
+    Ok(keypair)
+}
+
+fn get_key_path(identity_name: &str) -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    // Sanitize identity name for filesystem use
+    let safe_name: String = identity_name.chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect();
+    PathBuf::from(&home).join(KEY_DIR).join(format!("{}.key", safe_name))
+}
 
 pub enum AppEvent {
     SendMessage {
@@ -45,12 +87,13 @@ pub struct P2PBehaviour {
 
 impl P2PSwarm {
     pub async fn new(
-        _identity_name: Arc<String>,
+        identity_name: Arc<String>,
         port: u16,
         bootstrap: Option<&str>,
     ) -> anyhow::Result<Self> {
-        let local_key = identity::Keypair::generate_ed25519();
+        let local_key = load_or_create_keypair(&identity_name)?;
         let local_peer_id = PeerId::from(local_key.public());
+        println!("[P2P] Peer ID: {} (identity: {})", local_peer_id, identity_name);
 
         let gossipsub_config = gossipsub::ConfigBuilder::default()
             .heartbeat_interval(Duration::from_secs(1))
@@ -171,14 +214,18 @@ pub async fn run_swarm(
 
                         {
                             let mut swarm = p2p_handle.write().await;
-                            let _ = swarm.publish_message(&msg.to_string());
+                            if let Err(e) = swarm.publish_message(&msg.to_string()) {
+                                eprintln!("[P2P] Failed to publish message: {}", e);
+                            }
                         }
 
-                        let _ = storage.write().await.save_message(
+                        if let Err(e) = storage.write().await.save_message(
                             &identity,
                             &content,
                             false,
-                        );
+                        ) {
+                            eprintln!("[Storage] Failed to save message: {}", e);
+                        }
                     }
                     Ok(AppEvent::Shutdown) | Err(_) => break,
                 }
@@ -216,7 +263,9 @@ async fn handle_swarm_event(
                 let is_ai_command =
                     content.starts_with("@gemma ") || content.starts_with("@ai ");
 
-                let _ = storage.write().await.save_message(sender, content, is_ai_command);
+                if let Err(e) = storage.write().await.save_message(sender, content, is_ai_command) {
+                    eprintln!("[Storage] Failed to save incoming message: {}", e);
+                }
 
                 if is_ai_command {
                     let prompt = content
@@ -235,14 +284,18 @@ async fn handle_swarm_event(
                                 "timestamp": chrono::Utc::now().to_rfc3339(),
                             });
 
-                            let _ = storage.write().await.save_message(
+                            if let Err(e) = storage.write().await.save_message(
                                 &format!("AI[{}]", identity),
                                 &response,
                                 true,
-                            );
+                            ) {
+                                eprintln!("[Storage] Failed to save AI response: {}", e);
+                            }
 
                             let mut swarm = p2p_handle.write().await;
-                            let _ = swarm.publish_message(&reply.to_string());
+                            if let Err(e) = swarm.publish_message(&reply.to_string()) {
+                                eprintln!("[P2P] Failed to publish AI reply: {}", e);
+                            }
                         }
                         Err(e) => {
                             eprintln!("[AI Error] {}", e);

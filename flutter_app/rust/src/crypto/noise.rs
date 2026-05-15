@@ -28,14 +28,20 @@ impl CryptoKeyPair {
     }
 
     pub fn verify(message: &[u8], signature: &[u8], public_key: &[u8]) -> bool {
-        if let (Ok(pk), Ok(sig)) = (
-            VerifyingKey::from_bytes(public_key.try_into().unwrap()),
-            Signature::from_slice(signature),
-        ) {
-            pk.verify(message, &sig).is_ok()
-        } else {
-            false
-        }
+        // SAFE: no unwrap() — return false instead of panicking on bad input
+        let pk_bytes: [u8; 32] = match public_key.try_into() {
+            Ok(b) => b,
+            Err(_) => return false,
+        };
+        let pk = match VerifyingKey::from_bytes(&pk_bytes) {
+            Ok(k) => k,
+            Err(_) => return false,
+        };
+        let sig = match Signature::from_slice(signature) {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+        pk.verify(message, &sig).is_ok()
     }
 
     pub fn public_key_bytes(&self) -> [u8; 32] {
