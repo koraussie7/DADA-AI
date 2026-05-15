@@ -1,7 +1,9 @@
-﻿import base64
+import base64
+import json
 import uuid
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, Response
 from dotenv import load_dotenv
 import uvicorn
 import os
@@ -991,14 +993,30 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 @app.get("/loops/feed")
 async def loops_feed():
     if not LOOPS_API_URL:
-        return {"error": "Loops API URL not configured", "data": []}
+        return _local_loops_feed()
     headers = {"Authorization": f"Bearer {LOOPS_TOKEN}"} if LOOPS_TOKEN else {}
     try:
         async with httpx.AsyncClient(timeout=10) as c:
             r = await c.get(f"{LOOPS_API_URL}/web/feed", headers=headers)
-            return r.json()
+            if r.status_code == 200:
+                return r.json()
     except Exception as e:
+        log.warning(f"Loops remote feed failed, using local: {e}")
+    return _local_loops_feed()
+
+def _local_loops_feed():
+    """Fallback: serve videos from local youtube_shorts directory."""
+    videos = []
+    try:
+        files = sorted(os.listdir(HOME_VIDEOS_DIR), key=lambda f: os.path.getmtime(os.path.join(HOME_VIDEOS_DIR, f)), reverse=True)
+        for fname in files:
+            entry = _build_loops_entry(fname)
+            if entry:
+                videos.append(entry)
+    except Exception as e:
+        log.warning(f"Local loops feed error: {e}")
         return {"error": str(e), "data": []}
+    return {"data": videos}
 
 @app.get("/loops/video/{video_id}")
 async def loops_video(video_id: str):
@@ -1053,6 +1071,90 @@ async def loops_upload(data: dict, request: Request):
     except Exception as e:
         return {"error": str(e)}
 
+# ── Home Feed (Couple Challenge Videos) ─────────────────────────────────────
+HOME_VIDEOS_DIR = os.getenv("HOME_VIDEOS_DIR", "/root/youtube_shorts")
+HOME_THUMBS_DIR = HOME_VIDEOS_DIR  # thumbnails live alongside videos
+HOME_H264_DIR = os.path.join(HOME_VIDEOS_DIR, "h264")  # H264 transcoded versions
+PUBLIC_HOST = os.getenv("PUBLIC_HOST", "https://privseai.com")
+
+def _resolve_video(fname: str) -> str:
+    """Return path to best available video file (prefer H264)."""
+    h264_path = os.path.join(HOME_H264_DIR, fname)
+    if os.path.isfile(h264_path):
+        return h264_path
+    return os.path.join(HOME_VIDEOS_DIR, fname)
+
+def _resolve_thumb(thumb_name: str) -> str | None:
+    """Return path to thumbnail (prefer H264 thumbs)."""
+    h264_thumb = os.path.join(HOME_H264_DIR, thumb_name)
+    if os.path.isfile(h264_thumb):
+        return h264_thumb
+    orig_thumb = os.path.join(HOME_THUMBS_DIR, thumb_name)
+    return orig_thumb if os.path.isfile(orig_thumb) else None
+
+def _build_loops_entry(fname: str, public_host: str = PUBLIC_HOST) -> dict | None:
+    """Convert an mp4 filename to a loops-compatible video entry."""
+    if not fname.endswith(".mp4"):
+        return None
+    video_id = fname[:-4]
+    thumb_name = f"{video_id}.jpg"
+    thumb_path = _resolve_thumb(thumb_name)
+    return {
+        "id": video_id,
+        "title": f"커플 챌린지 #{video_id[:8]}",
+        "description": "🔥 한국 핫 쇼츠 🔥 #shorts #korea #trending",
+        "video_url": f"{public_host}/home/video/{fname}",
+        "thumbnail_url": f"{public_host}/home/thumb/{thumb_name}" if thumb_path else None,
+        "view_count": 0,
+        "reward_points": 15,
+        "creator": "DADA-AI",
+    }
+
+@app.get("/home/feed")
+async def home_feed():
+    """Return list of videos for the home screen couple challenge section."""
+    videos = []
+    try:
+        files = sorted(os.listdir(HOME_VIDEOS_DIR), key=lambda f: os.path.getmtime(os.path.join(HOME_VIDEOS_DIR, f)), reverse=True)
+        for fname in files:
+            entry = _build_loops_entry(fname)
+            if entry:
+                # home feed doesn't need creator/reward, keep it slim
+                videos.append({
+                    "id": entry["id"],
+                    "title": entry["title"],
+                    "video_url": entry["video_url"],
+                    "thumbnail_url": entry["thumbnail_url"],
+                    "view_count": entry["view_count"],
+                })
+    except Exception as e:
+        log.warning(f"Home feed error: {e}")
+        return {"error": str(e), "data": []}
+    return {"data": videos}
+
+@app.get("/home/video/{filename:path}")
+async def home_video(filename: str):
+    """Stream video files for the home feed (prefer H264 if available)."""
+    file_path = _resolve_video(filename)
+    if not os.path.isfile(file_path) or not filename.endswith(".mp4"):
+        return Response(status_code=404, content="Video not found")
+    headers = {"Content-Disposition": f'inline; filename="{filename}"'}
+    return FileResponse(file_path, media_type="video/mp4", headers=headers)
+
+@app.get("/home/thumb/{filename:path}")
+async def home_thumb(filename: str):
+    """Serve thumbnail images for home feed videos."""
+    file_path = _resolve_thumb(filename)
+    if not file_path or not filename.endswith(".jpg"):
+        return Response(status_code=404, content="Thumbnail not found")
+    return FileResponse(file_path, media_type="image/jpeg")
+
+@app.get("/couple")
+async def couple_page():
+    """Serve the couple challenge web page."""
+    html_path = os.path.join(os.path.dirname(__file__), "static", "home.html")
+    return FileResponse(html_path, media_type="text/html")
+
 # ── WebSocket ────────────────────────────────────────────────────────────────
 
 @app.websocket("/ws/{client_id}")
@@ -1060,14 +1162,86 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
     await websocket.accept()
     active_connections[client_id] = websocket
     log.info(f"WebSocket connected: {client_id}")
+
+    # Broadcast join to all other peers
+    join_msg = json.dumps({"type": "peer_joined", "peer_id": client_id})
+    for cid, ws in active_connections.items():
+        if cid != client_id:
+            try:
+                await ws.send_text(join_msg)
+            except Exception:
+                pass
+
     try:
         while True:
             data = await websocket.receive_text()
             log.debug(f"WS msg from {client_id}: {data[:100]}")
-            await websocket.send_text(f"[DADA-AI] {data}")
+
+            try:
+                msg = json.loads(data)
+                msg_type = msg.get("type", "message")
+
+                if msg_type == "ping":
+                    await websocket.send_text(json.dumps({"type": "pong"}))
+
+                elif msg_type == "chat":
+                    target = msg.get("target", "*")
+                    sender = msg.get("sender", client_id)
+                    content = msg.get("content", "")
+                    timestamp = msg.get("timestamp", "")
+
+                    if target == "*":
+                        # Broadcast to all peers
+                        broadcast = json.dumps({
+                            "type": "chat", "sender": sender,
+                            "content": content, "timestamp": timestamp
+                        })
+                        for cid, ws in active_connections.items():
+                            if cid != client_id:
+                                try:
+                                    await ws.send_text(broadcast)
+                                except Exception:
+                                    pass
+                    elif target in active_connections:
+                        # Send to specific peer
+                        target_msg = json.dumps({
+                            "type": "chat", "sender": sender,
+                            "content": content, "timestamp": timestamp
+                        })
+                        try:
+                            await active_connections[target].send_text(target_msg)
+                        except Exception:
+                            pass
+                    # Also echo back to sender for confirmation
+                    await websocket.send_text(json.dumps({
+                        "type": "ack", "sender": sender,
+                        "content": content, "timestamp": timestamp
+                    }))
+
+                elif msg_type == "join":
+                    # Re-broadcast peer info
+                    for cid, ws in active_connections.items():
+                        if cid != client_id:
+                            try:
+                                await ws.send_text(json.dumps({
+                                    "type": "peer_joined", "peer_id": client_id
+                                }))
+                            except Exception:
+                                pass
+
+            except json.JSONDecodeError:
+                await websocket.send_text(f"[DADA-AI] {data}")
+
     except WebSocketDisconnect:
         active_connections.pop(client_id, None)
         log.info(f"WebSocket disconnected: {client_id}")
+        # Broadcast leave
+        leave_msg = json.dumps({"type": "peer_left", "peer_id": client_id})
+        for cid, ws in active_connections.items():
+            try:
+                await ws.send_text(leave_msg)
+            except Exception:
+                pass
 
 # ── Commerce Endpoints ────────────────────────────────────────────────────────
 
