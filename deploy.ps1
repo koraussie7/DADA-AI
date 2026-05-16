@@ -1,5 +1,5 @@
 param(
-    [string]$Server = "185.55.243.225",
+    [string]$Server = "muhantube.com",
     [string]$User = "root",
     [string]$Port = "80"
 )

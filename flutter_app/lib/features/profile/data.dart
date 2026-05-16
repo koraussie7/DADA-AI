@@ -1,1 +1,1 @@
-/// Data layer for profile feature
+export '../../services/wallet_service.dart';

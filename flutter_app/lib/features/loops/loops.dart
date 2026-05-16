@@ -1,2 +1,4 @@
-// Loops video ecosystem - watch, earn, AI insights
-// Feature module: loops
+library loops;
+
+export 'data.dart';
+export 'presentation.dart';

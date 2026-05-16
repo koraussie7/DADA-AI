@@ -44,8 +44,8 @@ class LoopVideo {
       );
 }
 
-class LoopsService {
-  final String _baseUrl = 'https://muhantube.com';
+class LoopsService extends ChangeNotifier {
+  final String _baseUrl = '';
   final http.Client _client;
 
   LoopsService() : _client = http.Client();
@@ -83,7 +83,27 @@ class LoopsService {
     return null;
   }
 
+  Future<Map<String, dynamic>?> uploadVideo(String base64Video, String caption) async {
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('$_baseUrl/loops/upload'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'video': base64Video, 'caption': caption}),
+          )
+          .timeout(const Duration(seconds: 120));
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      debugPrint('[Loops] Upload error: $e');
+    }
+    return null;
+  }
+
+  @override
   void dispose() {
     _client.close();
+    super.dispose();
   }
 }

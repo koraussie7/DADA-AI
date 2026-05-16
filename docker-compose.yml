@@ -8,9 +8,30 @@ services:
       - '8000:8000'
     environment:
       - SERVER_PORT=8000
+      - LOCALAI_URL=http://localai:8081
+      - MINIMA_URL=http://minima-node:9001
     volumes:
       - .:/app
     command: python server.py
+    restart: unless-stopped
+    depends_on:
+      - localai
+    networks:
+      - dada-network
+
+  rust-server:
+    build:
+      context: ./rust_core
+      dockerfile: Dockerfile
+    container_name: liberty-reach
+    ports:
+      - '9002:9002'
+    environment:
+      - MINIMA_URL=http://minima-node:9001
+      - RUST_LOG=info
+    depends_on:
+      - minima-node
+      - dada-server
     restart: unless-stopped
     networks:
       - dada-network
@@ -21,8 +42,25 @@ services:
     ports:
       - '9001:9001'
       - '8080:8080'
+    environment:
+      - MINIMA_RPCENABLE=true
+      - MINIMA_RPCSSL=false
     volumes:
       - minima-data:/minima
+    restart: unless-stopped
+    networks:
+      - dada-network
+
+  localai:
+    image: quay.io/go-skynet/local-ai:latest
+    container_name: localai
+    ports:
+      - '8081:8080'
+    volumes:
+      - /home/models:/models
+    environment:
+      - MODELS_PATH=/models
+    command: ["/usr/bin/local-ai", "--models-path", "/models"]
     restart: unless-stopped
     networks:
       - dada-network
@@ -37,6 +75,7 @@ services:
       - ./nginx/conf.d:/etc/nginx/conf.d
     depends_on:
       - dada-server
+      - rust-server
     networks:
       - dada-network
 

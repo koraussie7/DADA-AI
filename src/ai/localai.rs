@@ -13,7 +13,7 @@ impl LocalAIClient {
         Self {
             client: Client::new(),
             base_url: "http://localhost:8081".to_string(),
-            model: "gemma-4-e4b-it".to_string(),
+            model: "gemma3:4b".to_string(),
         }
     }
 

@@ -1,2 +1,2 @@
-// Chat feature - messaging UI, chat list, message bubbles
-// Feature module: chat
+export 'data.dart';
+export 'presentation.dart';
