@@ -1,178 +1,111 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'core/theme/app_theme.dart';
-import 'core/constants/app_constants.dart';
+import 'services/dating_service.dart';
+import 'services/food_delivery_service.dart';
+import 'screens/dating/auth_screen.dart';
+import 'screens/dating/discover_screen.dart';
+import 'screens/dating/matches_screen.dart';
+import 'screens/dating/explore_screen.dart';
+import 'screens/food_request_screen.dart';
+import 'screens/food_bid_screen.dart';
+import 'screens/food_confirm_screen.dart';
+import 'services/taxi_service.dart';
+import 'services/massage_service.dart';
+import 'screens/taxi_request_screen.dart';
+import 'screens/taxi_bid_screen.dart';
+import 'screens/taxi_confirm_screen.dart';
+import 'screens/massage_request_screen.dart';
+import 'screens/massage_bid_screen.dart';
+import 'screens/massage_confirm_screen.dart';
+import 'screens/hotel_request_screen.dart';
 import 'widgets/bottom_nav.dart';
-import 'services/wallet_service.dart';
-import 'services/commerce_service.dart';
-import 'services/chat_service.dart';
-import 'services/loops_service.dart';
-import 'services/hybrid_ai_service.dart';
-import 'services/leaderboard_service.dart';
-import 'services/p2p_service.dart';
-import 'services/opencode_service.dart';
-import 'services/liberty_bridge.dart';
-import 'services/group_chat_service.dart';
-import 'services/voice_service.dart';
-import 'services/speech_service.dart';
-import 'services/p2p_inference_service.dart';
-import 'services/video_call_service.dart';
-import 'bloc/chat_bloc.dart';
-import 'screens/loops_player_screen.dart';
-import 'screens/chat_screen.dart';
-import 'screens/chat_list_screen.dart';
-import 'screens/contacts_screen.dart';
-import 'screens/settings_screen.dart';
-import 'screens/splash_screen.dart';
-import 'screens/live_commerce_screen.dart';
-import 'screens/leaderboard_screen.dart';
-import 'screens/reward_screen.dart';
-import 'screens/loops_screen.dart';
-import 'screens/loops_list_screen.dart';
-import 'screens/create_group_screen.dart';
-import 'screens/group_info_screen.dart';
-import 'screens/commerce_catalog_screen.dart';
-import 'screens/commerce_cart_screen.dart';
-import 'screens/video_call_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
   ]);
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => WalletService()),
-        ChangeNotifierProvider(create: (_) => CommerceService()),
-        ChangeNotifierProvider(create: (context) {
-          final cs = ChatService();
-          cs.loadHistory();
-          cs.attachP2P(context.read<P2PService>());
-          return cs;
-        }),
-        ChangeNotifierProvider(create: (_) => LoopsService()),
-        ChangeNotifierProvider(create: (_) => HybridAIService()),
-        Provider(create: (_) => LeaderboardService()),
-        ChangeNotifierProvider(create: (_) => P2PService()),
-        Provider(create: (_) => OpenCodeService()),
-        ChangeNotifierProvider(create: (_) => GroupChatService()),
-        ChangeNotifierProvider(create: (_) => VoiceService()),
-        ChangeNotifierProvider(create: (_) => SpeechService()),
-        ChangeNotifierProvider(create: (context) => P2PInferenceService(context.read<P2PService>())),
-        ChangeNotifierProvider(create: (context) => VideoCallService(context.read<P2PService>())),
-        ChangeNotifierProvider(create: (context) {
-          final bridge = LibertyBridge(
-            context.read<P2PService>(),
-            context.read<ChatService>(),
-          );
-          bridge.init(peerName: 'liberty_user');
-          return bridge;
-        }),
-        ChangeNotifierProvider(create: (_) => ValueNotifier<ThemeMode>(ThemeMode.dark)),
-      ],
-      child: BlocProvider(
-        create: (context) => ChatBloc(context.read<ChatService>()),
-        child: const MyApp(),
-      ),
-    ),
-  );
+  runApp(const LibertyReachApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class LibertyReachApp extends StatelessWidget {
+  const LibertyReachApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final themeMode = context.watch<ValueNotifier<ThemeMode>>().value;
-
-    return MaterialApp(
-      title: AppConstants.appName,
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: themeMode,
-      initialRoute: '/',
-      onGenerateRoute: (settings) {
-        final args = settings.arguments;
-
-        switch (settings.name) {
-          case '/':
-            return MaterialPageRoute(builder: (_) => const MainBottomNav());
-
-          case '/splash':
-            return MaterialPageRoute(builder: (_) => const SplashScreen());
-
-          case '/chat':
-            return MaterialPageRoute(
-              builder: (_) => const ChatScreen(peerId: 'default', peerName: 'Chat'),
-            );
-
-          case '/chat-list':
-            return MaterialPageRoute(builder: (_) => const ChatListScreen());
-
-          case '/contacts':
-            return MaterialPageRoute(builder: (_) => const ContactsScreen());
-
-          case '/settings':
-            return MaterialPageRoute(builder: (_) => const SettingsScreen());
-
-          case '/leaderboard':
-            return MaterialPageRoute(builder: (_) => const LeaderboardScreen());
-
-          case '/live-commerce':
-            return MaterialPageRoute(builder: (_) => const LiveCommerceScreen());
-
-          case '/reward':
-            return MaterialPageRoute(builder: (_) => const RewardScreen());
-
-          case '/loops':
-            return MaterialPageRoute(builder: (_) => const LoopsScreen());
-
-          case '/loops/list':
-            return MaterialPageRoute(builder: (_) => const LoopsListScreen());
-
-          case '/loops/player':
-            if (args is LoopVideo) {
-              return MaterialPageRoute(
-                builder: (_) => LoopsPlayerScreen(videoIndex: 0, video: args),
-              );
-            }
-            if (args is int) {
-              return MaterialPageRoute(
-                builder: (_) => LoopsPlayerScreen(videoIndex: args),
-              );
-            }
-            return MaterialPageRoute(
-              builder: (_) => LoopsPlayerScreen(videoIndex: 0),
-            );
-
-          case '/group/create':
-            return MaterialPageRoute(builder: (_) => const CreateGroupScreen());
-
-          case '/group/info':
-            if (args is String) {
-              return MaterialPageRoute(
-                builder: (_) => GroupInfoScreen(groupId: args),
-              );
-            }
-            return MaterialPageRoute(builder: (_) => const MainBottomNav());
-
-          case '/commerce/catalog':
-            return MaterialPageRoute(builder: (_) => const CommerceCatalogScreen());
-
-          case '/commerce/cart':
-            return MaterialPageRoute(builder: (_) => const CommerceCartScreen());
-
-          case '/video-call':
-            return MaterialPageRoute(builder: (_) => const VideoCallScreen());
-
-          default:
-            return MaterialPageRoute(builder: (_) => const MainBottomNav());
-        }
-      },
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => DatingService()),
+        ChangeNotifierProvider(create: (_) {
+          final svc = FoodDeliveryService();
+          svc.loadMenu();
+          return svc;
+        }),
+        ChangeNotifierProvider(create: (_) => TaxiService()),
+        ChangeNotifierProvider(create: (_) => MassageService()),
+      ],
+      child: MaterialApp(
+        title: 'DADA-AI',
+        debugShowCheckedModeBanner: false,
+        theme: _buildTheme(),
+        home: const MainScreen(),
+        routes: {
+          '/auth': (_) => const AuthScreen(),
+          '/discover': (_) => const DiscoverScreen(),
+          '/matches': (_) => const MatchesScreen(),
+          '/explore': (_) => const ExploreScreen(),
+          '/food/request': (_) => const FoodRequestScreen(),
+          '/taxi/request': (_) => const TaxiRequestScreen(),
+          '/massage/request': (_) => const MassageRequestScreen(),
+          '/hotel/request': (_) => const HotelRequestScreen(),
+        },
+      ),
     );
+  }
+
+  ThemeData _buildTheme() {
+    const primaryColor = Color(0xFFF02C56);
+    return ThemeData(
+      brightness: Brightness.dark,
+      primaryColor: primaryColor,
+      scaffoldBackgroundColor: const Color(0xFF020617),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Color(0xFF0F172A),
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: false,
+        titleTextStyle: TextStyle(
+          color: Colors.white,
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: primaryColor,
+        brightness: Brightness.dark,
+        primary: primaryColor,
+        surface: const Color(0xFF0F172A),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: const Color(0xFF0F172A),
+        indicatorColor: const Color(0xFFF02C56).withValues(alpha: 0.2),
+        shadowColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        labelTextStyle: WidgetStateProperty.all(
+          const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: Color(0xFF94A3B8)),
+        ),
+      ),
+      useMaterial3: true,
+    );
+  }
+}
+
+class MainScreen extends StatelessWidget {
+  const MainScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const MainBottomNav();
   }
 }
