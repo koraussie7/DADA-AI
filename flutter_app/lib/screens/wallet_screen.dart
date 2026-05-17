@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../services/wallet_service.dart';
 import '../core/design_system/design_system.dart';
 import 'qr_scan_screen.dart';
+import 'point_charge_screen.dart';
 
 class WalletScreen extends StatelessWidget {
   const WalletScreen({super.key});
@@ -145,6 +146,8 @@ class WalletScreen extends StatelessWidget {
                       _ActionBtn(icon: Icons.send, label: 'Send', color: AppColors.accent, onTap: () {}),
                       const SizedBox(width: 12),
                       _ActionBtn(icon: Icons.history, label: 'History', color: AppColors.info, onTap: () {}),
+                    const SizedBox(width: 12),
+                    _ActionBtn(icon: Icons.stars, label: 'Charge', color: AppColors.primary, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PointChargeScreen()))),
                     ],
                   ),
                   const SizedBox(height: 24),

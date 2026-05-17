@@ -24,6 +24,16 @@ app.include_router(ai_chat_router)
 from app.routers.platform_routes import router as platform_router
 app.include_router(platform_router)
 
+# DADA Point
+from app.routers.point_charge import router as point_charge_router
+app.include_router(point_charge_router)
+
+from app.routers.stripe_webhook import router as stripe_webhook_router
+app.include_router(stripe_webhook_router)
+
+from app.routers.admin_point import router as admin_point_router
+app.include_router(admin_point_router)
+
 @app.get("/")
 async def root():
     return {"status": "✅ DADA-AI Hermes Server Running", "hermes": "ready"}
