@@ -42,6 +42,17 @@ TASK_TO_CODER.md
 # Logs
 logs/
 
+# Rust build output
+rust_core/target/
+
+# SQLite runtime files (WAL/SHM)
+*.db-shm
+*.db-wal
+
+# Runtime session data
+live_sessions.json
+*_live_sessions.json
+
 # IDE
 .vscode/
 .idea/
