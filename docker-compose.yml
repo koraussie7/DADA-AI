@@ -12,7 +12,7 @@ services:
       - MINIMA_URL=http://minima-node:9001
     volumes:
       - .:/app
-    command: python server.py  # DEPRECATED — use server/app/main.py via server/start.sh instead
+    command: python -m server.app.main  # DEPRECATED — use server/app/main.py via server/start.sh instead
     restart: unless-stopped
     depends_on:
       - localai
