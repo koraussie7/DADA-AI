@@ -71,6 +71,13 @@ class _DADADrawerState extends State<DADADrawer>
           category: DrawerCategory.services,
           accentColor: const Color(0xFF3B82F6),
         ),
+        _DrawerItem(
+          label: 'Vector Map',
+          icon: Icons.map_rounded,
+          routeName: '/map/vector',
+          category: DrawerCategory.services,
+          accentColor: const Color(0xFF22D3EE),
+        ),
 
         // Category: Hyperspace
         _DrawerItem(

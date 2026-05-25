@@ -28,6 +28,7 @@ dependencies:
   web_socket_channel: ^3.0.0
   flutter_map: ^8.3.0
   latlong2: ^0.9.1
+  maplibre_gl: ^0.26.1
 
 dev_dependencies:
   flutter_test:

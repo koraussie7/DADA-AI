@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'services/dating_service.dart';
 import 'services/food_delivery_service.dart';
 import 'services/location_service.dart';
+import 'services/osm_location_service.dart';
 import 'services/p2p_service.dart';
 import 'services/chat_service.dart';
 import 'services/liberty_bridge.dart';
@@ -30,6 +31,7 @@ import 'services/taxi_service.dart';
 import 'services/massage_service.dart';
 import 'screens/taxi_request_screen.dart';
 import 'screens/massage_request_screen.dart';
+import 'screens/maplibre_map_screen.dart';
 import 'screens/hotel_request_screen.dart';
 import 'screens/business_dashboard_screen.dart';
 import 'screens/admin_point_approval_screen.dart';
@@ -76,6 +78,7 @@ class LibertyReachApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => TaxiService()),
         ChangeNotifierProvider(create: (_) => MassageService()),
         ChangeNotifierProvider(create: (_) => LocationService()),
+        ChangeNotifierProvider(create: (_) => OsmLocationService()),
         ChangeNotifierProvider(create: (ctx) => LibertyBridge(
           ctx.read<P2PService>(),
           ctx.read<ChatService>(),
@@ -138,6 +141,7 @@ class LibertyReachApp extends StatelessWidget {
           '/contacts': (_) => const ContactsScreen(),
           '/settings': (_) => const SettingsScreen(),
           '/auth/signup': (_) => const SignupScreen(),
+          '/map/vector': (_) => const MaplibreMapScreen(),
         },
       ),
       ),

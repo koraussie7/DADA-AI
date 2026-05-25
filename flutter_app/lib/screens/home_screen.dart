@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:maplibre_gl/maplibre_gl.dart';
 import '../core/theme/app_theme.dart';
 import '../services/home_service.dart';
 import '../services/dating_service.dart';
 import '../widgets/p2p_video_player.dart';
-import '../widgets/nearby_map_widget.dart';
+import '../widgets/maplibre_map_widget.dart';
+import '../core/design_system/maplibre_styles.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -92,8 +94,13 @@ class _HomeScreenState extends State<HomeScreen> {
             _HotelCard(),
             const SizedBox(height: 8),
 
-            // ── Nearby Places Map ──
-            const NearbyMapWidget(),
+            // ── MapLibre Vector Map ──
+            const MaplibreMapWidget(
+              style: MapLibreStyle.dadaDark,
+              initialPosition: LatLng(37.5665, 126.9780),
+              initialZoom: 12,
+              height: 220,
+            ),
             const SizedBox(height: 16),
 
           const Padding(

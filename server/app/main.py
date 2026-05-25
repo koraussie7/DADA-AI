@@ -54,7 +54,9 @@ from app.routers.food_delivery import router as food_delivery_router
 app.include_router(food_delivery_router)
 
 from app.routers.location import router as location_router
+from app.routers.location_osm import router as location_osm_router
 app.include_router(location_router)
+app.include_router(location_osm_router)
 
 from app.routers.taxi_booking import router as taxi_booking_router
 app.include_router(taxi_booking_router)

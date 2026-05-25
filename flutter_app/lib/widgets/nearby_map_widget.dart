@@ -8,7 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../core/design_system/app_colors.dart';
-import '../services/location_service.dart';
+import '../services/osm_location_service.dart';
 
 class NearbyMapWidget extends StatefulWidget {
   const NearbyMapWidget({super.key});
@@ -25,7 +25,7 @@ class _NearbyMapWidgetState extends State<NearbyMapWidget> {
     super.didChangeDependencies();
     if (!_initialized) {
       _initialized = true;
-      final svc = context.read<LocationService>();
+      final svc = context.read<OsmLocationService>();
       svc.getCurrentPosition().then((_) {
         svc.searchNearby();
       });
@@ -34,7 +34,7 @@ class _NearbyMapWidgetState extends State<NearbyMapWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final svc = context.watch<LocationService>();
+    final svc = context.watch<OsmLocationService>();
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -100,7 +100,7 @@ class _NearbyMapWidgetState extends State<NearbyMapWidget> {
             child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              children: PlaceCategory.all.map((cat) {
+              children: OsmPlaceCategory.all.map((cat) {
                 final selected = cat.type == svc.selectedCategory.type;
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
@@ -314,7 +314,7 @@ class _NearbyMapWidgetState extends State<NearbyMapWidget> {
     );
   }
 
-  void _showAllPlaces(LocationService svc) {
+  void _showAllPlaces(OsmLocationService svc) {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.surface,
@@ -379,7 +379,7 @@ class _NearbyMapWidgetState extends State<NearbyMapWidget> {
 // ── Mini marker on the map ──
 
 class _PlaceMarker extends StatelessWidget {
-  final NearbyPlace place;
+  final OsmPlace place;
   const _PlaceMarker({required this.place});
 
   @override
@@ -439,7 +439,7 @@ class _PlaceCountBar extends StatelessWidget {
 // ── Single place row in the list ──
 
 class _PlaceRow extends StatelessWidget {
-  final NearbyPlace place;
+  final OsmPlace place;
   const _PlaceRow({required this.place});
 
   @override

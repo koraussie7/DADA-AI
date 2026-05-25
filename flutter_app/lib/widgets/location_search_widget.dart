@@ -1,5 +1,8 @@
 // lib/widgets/location_search_widget.dart
-/// Reusable Google Maps-powered location search widget.
+/// Reusable OSM-powered location search widget (Google-free).
+///
+/// Uses OpenStreetMap Nominatim for geocoding & search.
+/// No API key required.
 ///
 /// Usage across Food Delivery, Taxi, Massage, Hotel:
 /// ```dart
@@ -39,27 +42,32 @@ class SelectedLocation {
       };
 }
 
-/// Google Places Autocomplete prediction.
+/// OSM Nominatim geocoding result (replaces Google Places prediction).
 class _PlacePrediction {
-  final String placeId;
-  final String description;
+  final int osmId;
+  final String displayName;
   final String mainText;
   final String secondaryText;
+  final double lat;
+  final double lng;
 
   const _PlacePrediction({
-    required this.placeId,
-    required this.description,
+    required this.osmId,
+    required this.displayName,
     required this.mainText,
     required this.secondaryText,
+    this.lat = 0,
+    this.lng = 0,
   });
 
   factory _PlacePrediction.fromJson(Map<String, dynamic> json) {
-    final sf = json['structured_formatting'] as Map<String, dynamic>?;
     return _PlacePrediction(
-      placeId: json['place_id'] as String? ?? '',
-      description: json['description'] as String? ?? '',
-      mainText: sf?['main_text'] as String? ?? '',
-      secondaryText: sf?['secondary_text'] as String? ?? '',
+      osmId: json['osm_id'] as int? ?? 0,
+      displayName: json['display_name'] as String? ?? '',
+      mainText: json['main_text'] as String? ?? '',
+      secondaryText: json['secondary_text'] as String? ?? '',
+      lat: (json['lat'] as num?)?.toDouble() ?? 0.0,
+      lng: (json['lng'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }
@@ -164,9 +172,9 @@ class _LocationSearchWidgetState extends State<LocationSearchWidget> {
     try {
       final resp = await _client
           .post(
-            Uri.parse('$_baseUrl/api/location/search'),
+            Uri.parse('$_baseUrl/api/location-osm/search'),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'query': query}),
+            body: jsonEncode({'query': query, 'limit': 5}),
           )
           .timeout(const Duration(seconds: 10));
 
@@ -204,16 +212,16 @@ class _LocationSearchWidgetState extends State<LocationSearchWidget> {
     setState(() {
       _showSuggestions = false;
       _isSearching = true;
-      _controller.text = prediction.description;
+      _controller.text = prediction.displayName;
     });
 
     // Geocode the selected address
     try {
       final resp = await _client
           .post(
-            Uri.parse('$_baseUrl/api/location/geocode'),
+            Uri.parse('$_baseUrl/api/location-osm/geocode'),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'address': prediction.description}),
+            body: jsonEncode({'address': prediction.displayName}),
           )
           .timeout(const Duration(seconds: 10));
 
@@ -221,10 +229,10 @@ class _LocationSearchWidgetState extends State<LocationSearchWidget> {
         final data = jsonDecode(resp.body) as Map<String, dynamic>;
         final location = SelectedLocation(
           formattedAddress: data['formatted_address'] as String? ??
-              prediction.description,
+              prediction.displayName,
           lat: (data['lat'] as num).toDouble(),
           lng: (data['lng'] as num).toDouble(),
-          placeId: prediction.placeId,
+          placeId: data['place_id'] as String? ?? '',
         );
 
         if (mounted) {
@@ -308,7 +316,7 @@ class _LocationSearchWidgetState extends State<LocationSearchWidget> {
       try {
         final resp = await _client
             .post(
-              Uri.parse('$_baseUrl/api/location/reverse-geocode'),
+              Uri.parse('$_baseUrl/api/location-osm/reverse'),
               headers: {'Content-Type': 'application/json'},
               body: jsonEncode({
                 'lat': position.latitude,
@@ -669,7 +677,7 @@ class _LocationSearchWidgetState extends State<LocationSearchWidget> {
                   Text(
                     prediction.secondaryText.isNotEmpty
                         ? prediction.secondaryText
-                        : prediction.description,
+                        : prediction.displayName,
                     style: const TextStyle(
                       color: Color(0xFF94A3B8),
                       fontSize: 12,
