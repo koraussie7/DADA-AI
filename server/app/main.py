@@ -83,6 +83,26 @@ app.include_router(hyperspace_router)
 from app.routers.isek import router as isek_router
 app.include_router(isek_router)
 
+# ── Agent Dashboard ────────────────────────────────────────────
+from app.routers.agent_dashboard import router as agent_dashboard_router
+app.include_router(agent_dashboard_router)
+
+# ── Agent Notifications ─────────────────────────────────────────
+from app.routers.notification_routes import router as notification_router
+app.include_router(notification_router)
+
+# ── Server Terminal ────────────────────────────────────────────
+from app.routers.terminal_routes import router as terminal_router
+app.include_router(terminal_router)
+
+# ── OpenClaude CLI Bridge ────────────────────────────────────────
+from app.routers.openclaude_bridge import router as openclaude_bridge_router
+app.include_router(openclaude_bridge_router)
+
+# ── DADAPOINT Reward ───────────────────────────────────────────────
+from app.routers.reward_routes import router as reward_router
+app.include_router(reward_router)
+
 # ── Auth ───────────────────────────────────────────────────────────────
 from app.auth.auth_routes import router as auth_router
 app.include_router(auth_router)
