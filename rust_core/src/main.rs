@@ -49,7 +49,8 @@ async fn main() -> anyhow::Result<()> {
 
     let p2p_handle = Arc::new(RwLock::new(swarm));
 
-    let ai_client = ai::localai::LocalAIClient::new();
+    let ai_url = std::env::var("LOCALAI_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let ai_client = ai::localai::LocalAIClient::new(ai_url.clone());
 
     let minima_url = std::env::var("MINIMA_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
     let minima = blockchain::minima_service::MinimaService::new(&minima_url);
@@ -94,7 +95,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     println!("[Liberty Reach] Node {} running on port {}", identity, cli.port);
-    println!("[Liberty Reach] AI endpoint: http://localhost:8080");
+    println!("[Liberty Reach] AI endpoint: {}", ai_url);
     println!("[Liberty Reach] Minima: {}", minima_url);
     println!("[Liberty Reach] Type messages below (/help for commands):");
 
