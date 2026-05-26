@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../core/constants/app_constants.dart';
 
 class LoopVideo {
   final String id;
@@ -45,7 +46,7 @@ class LoopVideo {
 }
 
 class LoopsService extends ChangeNotifier {
-  final String _baseUrl = 'https://muhantube.com';
+  final String _baseUrl = AppConstants.apiBaseUrl;
   final http.Client _client;
   List<LoopVideo> _feed = [];
 

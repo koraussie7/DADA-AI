@@ -1,13 +1,14 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../core/constants/app_constants.dart';
 
 class OpenCodeService {
   final String _baseUrl;
   final http.Client _client;
 
   OpenCodeService({String? baseUrl})
-      : _baseUrl = baseUrl ?? 'https://opencode.ai/zen',
+      : _baseUrl = baseUrl ?? '${AppConstants.apiBaseUrl}/opencode/zen',
         _client = http.Client();
 
   Future<String> chatViaProxy({
@@ -31,7 +32,7 @@ class OpenCodeService {
 
       final resp = await _client
           .post(
-            Uri.parse('https://muhantube.com/opencode/zen'),
+            Uri.parse(_baseUrl),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode(body),
           )

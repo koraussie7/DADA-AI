@@ -8,6 +8,7 @@ class AppConstants {
   static const Duration wsReconnectDelay = Duration(seconds: 5);
   static const Duration wsPingInterval = Duration(seconds: 30);
   static const String defaultAIUrl = 'http://localhost:8080';
+  static const bool isLocalDev = true;
 
   // UI Strings
   static const String trendingLabel = '\u{1F525} Trending Now';

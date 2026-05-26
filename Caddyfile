@@ -5,24 +5,14 @@
 }
 
 privseai.com {
-    # Cloudflare handles edge HTTPS; use internal cert for origin
-    tls internal
+    tls {
+        issuer acme
+    }
 
     root * /var/www/privseai/build/web
     file_server
 
-    handle /api/* {
-        reverse_proxy localhost:8080
-    }
-
-    handle /upload* {
-        reverse_proxy localhost:8501
-    }
-
-    handle /importer* {
-        reverse_proxy localhost:8502
-    }
-
+    # DADA FastAPI server routes (port 8000)
     handle /health {
         reverse_proxy localhost:8000
     }
@@ -47,6 +37,18 @@ privseai.com {
     handle /commerce/* {
         reverse_proxy localhost:8000
     }
+    handle /home/* {
+        reverse_proxy localhost:8000
+    }
+    handle /inference/* {
+        reverse_proxy localhost:8000
+    }
+    handle /groups/* {
+        reverse_proxy localhost:8000
+    }
+    handle /couple {
+        reverse_proxy localhost:8000
+    }
     handle /ws/* {
         reverse_proxy localhost:8000
     }
@@ -57,7 +59,7 @@ privseai.com {
         file_server
     }
 
-    # 보안 헤더
+    # Security headers
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains"
         X-Content-Type-Options "nosniff"

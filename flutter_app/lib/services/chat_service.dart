@@ -11,6 +11,7 @@ class ChatService extends ChangeNotifier {
       StreamController<ChatMessage>.broadcast();
   final Uuid _uuid = const Uuid();
   P2PService? _p2p;
+  StreamSubscription? _p2pSub;
 
   Stream<ChatMessage> get messages => _messageController.stream;
 
@@ -19,7 +20,8 @@ class ChatService extends ChangeNotifier {
 
   void attachP2P(P2PService p2p) {
     _p2p = p2p;
-    p2p.incoming.listen((msg) {
+    _p2pSub?.cancel();
+    _p2pSub = p2p.incoming.listen((msg) {
       final chatMsg = ChatMessage(
         id: _uuid.v4(),
         sender: msg.sender,
@@ -126,6 +128,7 @@ class ChatService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _p2pSub?.cancel();
     _messageController.close();
     super.dispose();
   }

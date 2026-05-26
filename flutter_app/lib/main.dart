@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'core/theme/app_theme.dart';
 import 'core/constants/app_constants.dart';
+import 'core/localization/app_localizations.dart';
+import 'core/localization/language_provider.dart';
 import 'widgets/bottom_nav.dart';
 import 'services/wallet_service.dart';
 import 'services/commerce_service.dart';
@@ -45,6 +47,7 @@ void main() {
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => LanguageProvider()..loadSavedLocale()),
         ChangeNotifierProvider(create: (_) => WalletService()),
         ChangeNotifierProvider(create: (_) => CommerceService()),
         ChangeNotifierProvider(create: (context) {
@@ -87,6 +90,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeMode = context.watch<ValueNotifier<ThemeMode>>().value;
+    final langProvider = context.watch<LanguageProvider>();
 
     return MaterialApp(
       title: AppConstants.appName,
@@ -94,6 +98,14 @@ class MyApp extends StatelessWidget {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeMode,
+      locale: langProvider.locale,
+      supportedLocales: const [Locale('en'), Locale('ko')],
+      localizationsDelegates: const [
+        AppLocalizationsDelegate(),
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ],
+      localeResolutionCallback: langProvider.resolutionCallback,
       initialRoute: '/',
       onGenerateRoute: (settings) {
         final args = settings.arguments;

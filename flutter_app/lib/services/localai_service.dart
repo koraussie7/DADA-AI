@@ -2,9 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../core/constants/app_constants.dart';
 
 class LocalAIService {
-  final String _baseUrl = 'https://muhantube.com';
+  final String _baseUrl = AppConstants.apiBaseUrl;
   final http.Client _client;
   bool _lastHealth = false;
   String _selectedModel = 'gemini-2.5-flash';

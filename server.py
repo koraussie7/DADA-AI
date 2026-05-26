@@ -993,17 +993,40 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @app.get("/loops/feed")
 async def loops_feed():
-    if not LOOPS_API_URL:
-        return _local_loops_feed()
-    headers = {"Authorization": f"Bearer {LOOPS_TOKEN}"} if LOOPS_TOKEN else {}
-    try:
-        async with httpx.AsyncClient(timeout=10) as c:
-            r = await c.get(f"{LOOPS_API_URL}/web/feed", headers=headers)
-            if r.status_code == 200:
-                return r.json()
-    except Exception as e:
-        log.warning(f"Loops remote feed failed, using local: {e}")
-    return _local_loops_feed()
+    combined = {"data": []}
+    seen_ids = set()
+
+    # 1) Remote Loops (110 서버)
+    if LOOPS_API_URL:
+        headers = {"Authorization": f"Bearer {LOOPS_TOKEN}"} if LOOPS_TOKEN else {}
+        try:
+            async with httpx.AsyncClient(timeout=10) as c:
+                r = await c.get(f"{LOOPS_API_URL}/web/feed", headers=headers)
+                if r.status_code == 200:
+                    raw = r.json()
+                    items = raw.get("data") or raw.get("videos") or (raw if isinstance(raw, list) else [])
+                    if isinstance(items, dict):
+                        items = [items]
+                    for v in items:
+                        if isinstance(v, dict):
+                            v["source"] = "remote"
+                            vid = v.get("id") or v.get("_id") or ""
+                            if vid:
+                                seen_ids.add(str(vid))
+                            combined["data"].append(v)
+        except Exception as e:
+            log.warning(f"Loops remote feed failed: {e}")
+
+    # 2) Local couple challenge videos
+    local = _local_loops_feed().get("data", [])
+    for v in local:
+        vid = v.get("id", "")
+        if vid not in seen_ids:
+            v["source"] = "local"
+            seen_ids.add(vid)
+            combined["data"].append(v)
+
+    return combined
 
 def _local_loops_feed():
     """Fallback: serve videos from local youtube_shorts directory."""

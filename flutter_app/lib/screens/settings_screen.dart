@@ -4,6 +4,8 @@ import '../services/p2p_service.dart';
 import '../services/liberty_bridge.dart';
 import '../core/constants/app_constants.dart';
 import '../core/design_system/app_colors.dart';
+import '../core/localization/app_localizations.dart';
+import '../core/localization/language_provider.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -23,10 +25,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final bridge = context.watch<LibertyBridge>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final themeMode = context.watch<ThemeMode>();
+    final langProvider = context.watch<LanguageProvider>();
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Settings'),
+        title: Text(AppLocalizations.of(context).settings),
         automaticallyImplyLeading: false,
       ),
       body: ListView(
@@ -46,13 +49,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'My Node',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                    Text(
+                      AppLocalizations.of(context).myNode,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Peer ID: ${bridge.peerId ?? p2p.localPeerId ?? '12D3KooW...abcd'}',
+                      '${AppLocalizations.of(context).peerId}: ${bridge.peerId ?? p2p.localPeerId ?? '12D3KooW...abcd'}',
                       style: TextStyle(fontSize: 13, color: isDark ? Colors.grey[400] : Colors.grey[500]),
                     ),
                   ],
@@ -64,11 +67,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 12),
 
           // Appearance
-          _sectionHeader('Appearance'),
+          _sectionHeader(AppLocalizations.of(context).appearance),
           _settingTile(
             icon: isDark ? Icons.dark_mode : Icons.light_mode,
-            title: 'Theme',
-            subtitle: isDark ? 'Dark Mode' : 'Light Mode',
+            title: AppLocalizations.of(context).theme,
+            subtitle: isDark ? AppLocalizations.of(context).darkMode : AppLocalizations.of(context).lightMode,
             trailing: Switch(
               value: isDark,
               onChanged: (v) {
@@ -84,12 +87,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 12),
 
+          // Language
+          _sectionHeader(AppLocalizations.of(context).language),
+          _settingTile(
+            icon: Icons.language,
+            title: AppLocalizations.of(context).language,
+            subtitle: langProvider.locale.languageCode == 'ko' ? '한국어' : 'English',
+            trailing: DropdownButton<String>(
+              value: langProvider.locale.languageCode,
+              underline: const SizedBox(),
+              items: const [
+                DropdownMenuItem(value: 'en', child: Text('English')),
+                DropdownMenuItem(value: 'ko', child: Text('한국어')),
+              ],
+              onChanged: (v) {
+                if (v != null) {
+                  context.read<LanguageProvider>().setLocale(Locale(v));
+                }
+              },
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
           // P2P settings
-          _sectionHeader('P2P Network'),
+          _sectionHeader(AppLocalizations.of(context).p2pNetwork),
           _settingTile(
             icon: Icons.wifi,
-            title: 'Connected Peers',
-            subtitle: '${p2p.connectedPeers.length} peers connected',
+            title: AppLocalizations.of(context).connectedPeers,
+            subtitle: '${p2p.connectedPeers.length} ${AppLocalizations.of(context).peersConnected}',
             trailing: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
@@ -103,7 +129,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       color: p2p.isConnected ? const Color(0xFF4CAF50) : Colors.grey),
                   const SizedBox(width: 4),
                   Text(
-                    p2p.isConnected ? 'Online' : 'Offline',
+                    p2p.isConnected ? AppLocalizations.of(context).online : AppLocalizations.of(context).offline,
                     style: TextStyle(fontSize: 12,
                         color: p2p.isConnected ? const Color(0xFF4CAF50) : Colors.grey),
                   ),
@@ -114,13 +140,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (!p2p.isConnected)
             _settingTile(
               icon: Icons.link,
-              title: 'Connect to Server',
-              subtitle: p2p.isConnecting ? 'Connecting...' : 'Tap to connect',
+              title: AppLocalizations.of(context).connectToServer,
+              subtitle: p2p.isConnecting ? AppLocalizations.of(context).connecting : AppLocalizations.of(context).tapToConnect,
               onTap: p2p.isConnecting ? null : () => p2p.connect(AppConstants.apiBaseUrl),
             ),
           _settingTile(
             icon: Icons.shield,
-            title: 'End-to-End Encryption',
+            title: AppLocalizations.of(context).endToEndEncryption,
             subtitle: 'Noise Protocol + X25519',
             trailing: Switch(
               value: _e2eeEnabled,
@@ -130,17 +156,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           _settingTile(
             icon: Icons.storage,
-            title: 'Message Storage',
+            title: AppLocalizations.of(context).messageStorage,
             subtitle: 'Local persistence (SharedPreferences)',
           ),
 
           const SizedBox(height: 12),
 
           // AI settings
-          _sectionHeader('AI Settings'),
+          _sectionHeader(AppLocalizations.of(context).aiSettings),
           _settingTile(
             icon: Icons.auto_awesome,
-            title: 'AI Assistant',
+            title: AppLocalizations.of(context).aiAssistant,
             subtitle: 'Gemini 2.5 Flash + LocalAI',
             trailing: Switch(
               value: _aiEnabled,
@@ -150,7 +176,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           _settingTile(
             icon: Icons.link,
-            title: 'AI Server URL',
+            title: AppLocalizations.of(context).aiServerUrl,
             subtitle: _localAiUrl,
             trailing: const Icon(Icons.edit, size: 18, color: Colors.grey),
             onTap: () => _editAiUrl(context),
@@ -159,15 +185,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 12),
 
           // About
-          _sectionHeader('About'),
+          _sectionHeader(AppLocalizations.of(context).about),
           _settingTile(
             icon: Icons.info_outline,
-            title: 'Version',
+            title: AppLocalizations.of(context).version,
             subtitle: 'Liberty Reach v0.1.0',
           ),
           _settingTile(
             icon: Icons.menu_book,
-            title: 'Docs',
+            title: AppLocalizations.of(context).docs,
             subtitle: 'Obsidian Vault',
           ),
         ],
@@ -213,25 +239,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('AI Server URL'),
+        title: Text(AppLocalizations.of(context).aiServerUrl),
         content: TextField(
           controller: controller,
-          decoration: const InputDecoration(
-            hintText: 'http://localhost:8080',
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            hintText: AppLocalizations.of(context).aiServerUrl,
+            border: const OutlineInputBorder(),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(AppLocalizations.of(context).cancel),
           ),
           TextButton(
             onPressed: () {
               setState(() => _localAiUrl = controller.text);
               Navigator.pop(ctx);
             },
-            child: const Text('Save'),
+            child: Text(AppLocalizations.of(context).save),
           ),
         ],
       ),

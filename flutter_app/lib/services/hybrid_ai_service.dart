@@ -2,9 +2,10 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
+import '../core/constants/app_constants.dart';
 
 class HybridAIService extends ChangeNotifier {
-  final String _baseUrl = 'https://muhantube.com';
+  final String _baseUrl = AppConstants.apiBaseUrl;
   final http.Client _client;
 
   HybridAIService() : _client = http.Client();

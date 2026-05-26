@@ -41,6 +41,7 @@ class P2PService extends ChangeNotifier {
   final StreamController<P2PMessage> _incoming =
       StreamController<P2PMessage>.broadcast();
   WebSocketChannel? _channel;
+  StreamSubscription? _wsSub;
   Timer? _reconnectTimer;
   Timer? _pingTimer;
   String? _serverUrl;
@@ -61,9 +62,19 @@ class P2PService extends ChangeNotifier {
   bool get isConnecting => _isConnecting;
 
   Future<void> connect(String serverUrl) async {
+    if (AppConstants.isLocalDev) {
+      debugPrint('[P2P] Local dev — skipping WebSocket');
+      _isConnecting = false;
+      notifyListeners();
+      return;
+    }
     _serverUrl = serverUrl;
     _isConnecting = true;
     notifyListeners();
+
+    _wsSub?.cancel();
+    _channel?.sink.close();
+    _channel = null;
 
     try {
       final peerId = 'peer_${_randomId()}';
@@ -72,7 +83,7 @@ class P2PService extends ChangeNotifier {
       _channel = WebSocketChannel.connect(Uri.parse('$wsUrl/ws/$peerId'));
       _localPeerId = peerId;
 
-      _channel!.stream.listen(
+      _wsSub = _channel!.stream.listen(
             (data) {
           if (_disposed) return;
           try {
@@ -222,6 +233,7 @@ class P2PService extends ChangeNotifier {
     _disposed = true;
     _reconnectTimer?.cancel();
     _pingTimer?.cancel();
+    _wsSub?.cancel();
     _channel?.sink.close();
     _incoming.close();
     super.dispose();

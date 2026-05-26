@@ -2,9 +2,9 @@ param(
     [string]$Server = "185.55.243.225",
     [string]$User = "root",
     [string]$FlutterDir = "/root/DADA-AI/flutter_app",
-    [string]$WebDir = "/var/www/html",
+    [string]$WebDir = "/var/www/privseai/build/web",
     [string]$ServerPyPath = "/root/liberty-web/server.py",
-    [string]$NginxConfPath = "/etc/nginx/sites-available/privseai"
+    [string]$CaddyfilePath = "/etc/caddy/Caddyfile"
 )
 
 Write-Host "=== DADA-AI Flutter Web + Server Deploy ===" -ForegroundColor Magenta
@@ -34,15 +34,15 @@ Write-Host "[4/6] Updating server.py..." -ForegroundColor Cyan
 scp server.py "${User}@${Server}:${ServerPyPath}"
 ssh "${User}@${Server}" "pkill -f 'python3 server.py' 2>/dev/null; cd /root/liberty-web && nohup python3 server.py > liberty.log 2>&1 &"
 
-# 5. Upload nginx config & reload
-Write-Host "[5/6] Updating nginx config..." -ForegroundColor Cyan
-scp privseai_nginx "${User}@${Server}:${NginxConfPath}"
-ssh "${User}@${Server}" "nginx -t && systemctl reload nginx"
+# 5. Upload Caddyfile & reload Caddy
+Write-Host "[5/6] Updating Caddy config..." -ForegroundColor Cyan
+scp Caddyfile "${User}@${Server}:${CaddyfilePath}"
+ssh "${User}@${Server}" "caddy reload --config ${CaddyfilePath}"
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "Nginx config test failed!" -ForegroundColor Red
+    Write-Host "Caddy reload failed!" -ForegroundColor Red
     exit 1
 }
-Write-Host "  nginx reloaded!" -ForegroundColor Green
+Write-Host "  Caddy reloaded!" -ForegroundColor Green
 
 # 6. Purge Cloudflare cache
 Write-Host "[6/6] Purging Cloudflare cache..." -ForegroundColor Cyan

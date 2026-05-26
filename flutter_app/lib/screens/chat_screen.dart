@@ -17,6 +17,7 @@ import '../services/video_call_service.dart';
 import '../services/p2p_service.dart';
 import 'package:provider/provider.dart';
 import '../core/design_system/app_colors.dart';
+import '../core/constants/app_constants.dart';
 import '../widgets/message_bubble.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -173,7 +174,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _textController.clear();
         final videoUrl = result['url'] as String? ?? '';
         final reward = result['reward_points'] as int? ?? 0;
-        final fullUrl = 'https://muhantube.com$videoUrl';
+        final fullUrl = videoUrl.startsWith('http') ? videoUrl : '${AppConstants.apiBaseUrl}$videoUrl';
         _addMessage(ChatMessage(
           id: _uuid.v4(), sender: 'me', content: '\u{1F3AC} $fullUrl', isMe: true,
         ));
