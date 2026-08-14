@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   KeyRound,
@@ -10,7 +11,14 @@ import {
   Cpu,
   Settings,
   ExternalLink,
+  LogOut,
 } from "lucide-react";
+
+interface SessionUser {
+  user_email?: string | null;
+  user_id?: string;
+  user_role?: string | null;
+}
 
 const menuItems = [
   { name: "대시보드", icon: LayoutDashboard, href: "/dashboard" },
@@ -23,6 +31,26 @@ const menuItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [user, setUser] = useState<SessionUser | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/me");
+        const data = await res.json();
+        if (data.authenticated) setUser(data.user);
+      } catch {
+        /* noop */
+      }
+    })();
+  }, []);
+
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+    router.refresh();
+  };
 
   return (
     <aside className="flex h-screen w-64 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--panel-2)]">
@@ -72,15 +100,24 @@ export default function Sidebar() {
           </Link>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--accent)] text-sm font-semibold text-white">
-            U
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-sm font-semibold text-white">
+            {user?.user_email?.charAt(0)?.toUpperCase() || "U"}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">사용자</p>
-            <p className="truncate text-xs text-[var(--muted)]">
-              user@privseai.com
+            <p className="truncate text-sm font-medium">
+              {user?.user_email || "사용자"}
             </p>
+            {user?.user_role === "proxy_admin" && (
+              <p className="text-xs text-[var(--accent)]">관리자</p>
+            )}
           </div>
+          <button
+            onClick={handleLogout}
+            title="로그아웃"
+            className="rounded-md p-2 text-[var(--muted)] transition-colors hover:bg-[var(--panel)] hover:text-white"
+          >
+            <LogOut size={16} />
+          </button>
         </div>
       </div>
     </aside>

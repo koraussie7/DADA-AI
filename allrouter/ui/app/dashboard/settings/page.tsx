@@ -1,12 +1,32 @@
 "use client";
 
-import { useState } from "react";
-import { Bell, Globe, KeyRound, Shield } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Bell, Globe, Shield } from "lucide-react";
 
 export default function SettingsPage() {
   const [notifyUsage, setNotifyUsage] = useState(true);
   const [notifyError, setNotifyError] = useState(true);
   const [threshold, setThreshold] = useState("80");
+  const [masterKey, setMasterKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/master-key");
+        const data = await res.json();
+        if (data.master_key) setMasterKey(data.master_key);
+      } catch {
+        /* noop */
+      }
+    })();
+  }, []);
+
+  const masterKeyMasked = showKey
+    ? masterKey
+    : masterKey
+      ? masterKey.slice(0, 12) + "••••" + masterKey.slice(-4)
+      : "••••••••";
 
   return (
     <div className="p-8">
@@ -18,33 +38,53 @@ export default function SettingsPage() {
       </header>
 
       <div className="max-w-2xl space-y-6">
-        {/* 계정 */}
-        <section className="rounded-xl border border-[var(--border)] bg-[var(--panel)] p-6">
-          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
-            <KeyRound size={18} className="text-[var(--accent)]" />
-            계정
+        {/* 마스터 계정 */}
+        <section className="rounded-xl border border-[var(--accent)]/30 bg-[#0f1a2e] p-6">
+          <h2 className="mb-1 flex items-center gap-2 text-lg font-semibold">
+            <Shield size={18} className="text-[var(--accent)]" />
+            마스터 계정
           </h2>
+          <p className="mb-4 text-xs text-[var(--muted)]">
+            전체 관리 권한을 가진 최상위 계정입니다. /login에서 이 정보로 접속하세요.
+          </p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1.5 block text-sm text-[var(--muted)]">
-                이름
+                아이디
               </label>
-              <input
-                defaultValue="사용자"
-                className="w-full rounded-lg border border-[var(--border-light)] bg-[var(--panel-2)] px-4 py-2 text-sm outline-none transition-colors focus:border-[var(--accent)]"
-              />
+              <code className="block rounded-lg border border-[var(--border-light)] bg-[var(--panel-2)] px-4 py-2 font-mono text-sm">
+                admin
+              </code>
             </div>
             <div>
               <label className="mb-1.5 block text-sm text-[var(--muted)]">
-                이메일
+                비밀번호 (마스터 키)
               </label>
-              <input
-                defaultValue="user@privseai.com"
-                className="w-full rounded-lg border border-[var(--border-light)] bg-[var(--panel-2)] px-4 py-2 text-sm outline-none transition-colors focus:border-[var(--accent)]"
-              />
+              <div className="flex items-center gap-2">
+                <code className="flex-1 truncate rounded-lg border border-[var(--border-light)] bg-[var(--panel-2)] px-4 py-2 font-mono text-sm">
+                  {masterKeyMasked}
+                </code>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(masterKey);
+                    alert("복사되었습니다.");
+                  }}
+                  className="rounded-md bg-[var(--accent)] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-[var(--accent-hover)]"
+                >
+                  복사
+                </button>
+              </div>
+              <button
+                onClick={() => setShowKey((v) => !v)}
+                className="mt-2 text-xs text-[var(--muted)] transition-colors hover:text-white"
+              >
+                {showKey ? "키 숨기기" : "키 표시"}
+              </button>
             </div>
           </div>
         </section>
+
+        {/* 알림 */}
 
         {/* 알림 */}
         <section className="rounded-xl border border-[var(--border)] bg-[var(--panel)] p-6">

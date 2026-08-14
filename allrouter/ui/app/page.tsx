@@ -92,16 +92,16 @@ export default function LandingPage() {
           </nav>
           <div className="flex items-center gap-3">
             <Link
-              href="/dashboard"
+              href="/login"
               className="hidden text-sm text-[var(--muted)] transition-colors hover:text-white sm:block"
             >
               로그인
             </Link>
             <Link
-              href="/dashboard"
+              href="/signup"
               className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--accent-hover)]"
             >
-              시작하기
+              회원가입
             </Link>
           </div>
         </div>
@@ -130,7 +130,7 @@ export default function LandingPage() {
           </p>
           <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
             <Link
-              href="/dashboard"
+              href="/signup"
               className="group flex items-center gap-2 rounded-lg bg-[var(--accent)] px-6 py-3 font-medium text-white transition-all hover:bg-[var(--accent-hover)]"
             >
               무료로 시작하기
@@ -318,7 +318,7 @@ export default function LandingPage() {
               <li>커뮤니티 지원</li>
             </ul>
             <Link
-              href="/dashboard"
+              href="/signup"
               className="mt-8 rounded-lg border border-[var(--border-light)] py-2.5 text-center text-sm font-medium transition-colors hover:border-[var(--muted)]"
             >
               시작하기
@@ -342,7 +342,7 @@ export default function LandingPage() {
               <li>우선 지원</li>
             </ul>
             <Link
-              href="/dashboard"
+              href="/signup"
               className="mt-8 rounded-lg bg-[var(--accent)] py-2.5 text-center text-sm font-medium text-white transition-colors hover:bg-[var(--accent-hover)]"
             >
               프로 시작하기
@@ -386,7 +386,7 @@ export default function LandingPage() {
             서비스를 경험해보시라고 드립니다.
           </p>
           <Link
-            href="/dashboard"
+            href="/signup"
             className="group mt-8 inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-8 py-3.5 font-medium text-white transition-all hover:bg-[var(--accent-hover)]"
           >
             무료 계정 만들기
