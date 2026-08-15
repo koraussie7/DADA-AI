@@ -10,6 +10,7 @@ import {
   CreditCard,
   Cpu,
   Settings,
+  Network,
   ExternalLink,
   LogOut,
 } from "lucide-react";
@@ -26,6 +27,7 @@ const menuItems = [
   { name: "요청 로그", icon: Activity, href: "/dashboard/logs" },
   { name: "과금", icon: CreditCard, href: "/dashboard/billing" },
   { name: "모델", icon: Cpu, href: "/dashboard/models" },
+  { name: "CCR", icon: Network, href: "/dashboard/ccr" },
   { name: "설정", icon: Settings, href: "/dashboard/settings" },
 ];
 
