@@ -3,13 +3,14 @@
 import { useEffect, useState } from "react";
 import {
   Activity,
-  Cpu,
-  Eye,
+  BadgeDollarSign,
   Loader2,
-  Network,
+  PiggyBank,
   Route,
   Shield,
   Terminal,
+  TrendingDown,
+  Zap,
 } from "lucide-react";
 import { ccrFetch } from "@/lib/ccr";
 
@@ -19,28 +20,9 @@ interface CCRSettings {
   comboStrategy: string;
   comboStickyRoundRobinLimit: number;
   requireLogin: boolean;
-  requireApiKey: boolean;
-  enableObservability: boolean;
-  outboundProxyEnabled: boolean;
-  outboundProxyUrl: string;
-  outboundNoProxy: string;
-}
-
-interface HealthStatus {
-  ok: boolean;
-}
-
-interface TunnelStatus {
-  tunnel?: {
-    enabled?: boolean;
-    running?: boolean;
-    publicUrl?: string;
-  };
-  tailscale?: {
-    enabled?: boolean;
-    running?: boolean;
-    loggedIn?: boolean;
-  };
+  requestRetry: number;
+  apiPort: number;
+  machineId: string;
 }
 
 interface HeadroomStatus {
@@ -51,31 +33,60 @@ interface HeadroomStatus {
 
 interface ClaudeSettings {
   installed: boolean;
-  has9Router?: boolean;
-  exaMcpEnabled?: boolean;
   settingsPath?: string;
 }
 
-type Notice = { type: "success" | "error"; text: string } | null;
-
-function describeProxyError(message: string): string {
-  if (/request was cancelled/i.test(message)) {
-    return "연결이 취소되었습니다. 지정한 URL이 HTTP forward proxy로 동작하지 않는 것 같습니다. LiteLLM 등 일반 API 서버는 프록시가 아니므로 테스트에 실패합니다. http/https forward proxy URL을 입력하세요.";
-  }
-  if (/ECONNREFUSED/i.test(message)) {
-    return "연결이 거부되었습니다. 해당 주소:포트에서 프록시가 실행 중인지 확인하세요.";
-  }
-  if (/Invalid URL protocol|must start with/i.test(message)) {
-    return "http:// 또는 https:// 로 시작하는 URL만 지원됩니다. (SOCKS5 프록시는 지원되지 않습니다)";
-  }
-  if (/Invalid proxy URL/i.test(message)) {
-    return "프록시 URL 형식이 올바르지 않습니다.";
-  }
-  if (/timed out|AbortError/i.test(message)) {
-    return "프록시 테스트가 시간 초과되었습니다. 프록시 주소가 응답하는지 확인하세요.";
-  }
-  return message;
+interface UsageAnalytics {
+  summary?: {
+    totalRequests: number;
+    totalTokens: number;
+    totalCost: number;
+    successRatePct: number;
+    avgLatencyMs: number;
+    fallbackCount: number;
+    fallbackRatePct: number;
+    flexSavings: number;
+    flexUsageSavingsTokens: number;
+  };
 }
+
+interface QuotaProvider {
+  name: string;
+  provider: string;
+  connectionId: string;
+  quotaUsed: number;
+  quotaTotal: number | null;
+  percentRemaining: number;
+  resetAt: string | null;
+  tokenStatus: string;
+}
+
+interface QuotaStatus {
+  providers?: QuotaProvider[];
+}
+
+interface BudgetStatus {
+  budgetCheck?: {
+    allowed: boolean;
+    dailyUsed: number;
+    dailyLimit: number;
+    remaining: number;
+    warningReached: boolean;
+  };
+  totalCostToday?: number;
+  totalCostMonth?: number;
+}
+
+interface ProvidersStatus {
+  connections?: {
+    provider: string;
+    name: string;
+    isActive: boolean;
+    testStatus: string;
+  }[];
+}
+
+type Notice = { type: "success" | "error"; text: string } | null;
 
 const defaultSettings: CCRSettings = {
   fallbackStrategy: "round-robin",
@@ -83,44 +94,48 @@ const defaultSettings: CCRSettings = {
   comboStrategy: "fallback",
   comboStickyRoundRobinLimit: 1,
   requireLogin: true,
-  requireApiKey: true,
-  enableObservability: true,
-  outboundProxyEnabled: false,
-  outboundProxyUrl: "",
-  outboundNoProxy: "",
+  requestRetry: 3,
+  apiPort: 20128,
+  machineId: "",
 };
+
+function fmtUsd(value: number | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "$0.00";
+  if (value < 0.005) return "≈ $0";
+  return `$${value.toFixed(4)}`;
+}
 
 export default function CcrPage() {
   const [settings, setSettings] = useState<CCRSettings | null>(null);
-  const [health, setHealth] = useState<HealthStatus | null>(null);
-  const [tunnel, setTunnel] = useState<TunnelStatus | null>(null);
   const [headroom, setHeadroom] = useState<HeadroomStatus | null>(null);
   const [claude, setClaude] = useState<ClaudeSettings | null>(null);
+  const [analytics, setAnalytics] = useState<UsageAnalytics | null>(null);
+  const [quota, setQuota] = useState<QuotaStatus | null>(null);
+  const [budget, setBudget] = useState<BudgetStatus | null>(null);
+  const [providers, setProviders] = useState<ProvidersStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
-  const [proxyUrl, setProxyUrl] = useState("");
-  const [noProxy, setNoProxy] = useState("");
-  const [testingProxy, setTestingProxy] = useState(false);
-  const [proxyTestMsg, setProxyTestMsg] = useState<Notice>(null);
 
   useEffect(() => {
     (async () => {
       try {
-        const [settingsData, healthData, tunnelData, headroomData, claudeData] =
+        const [settingsData, headroomData, claudeData, analyticsData, quotaData, budgetData, providersData] =
           await Promise.all([
             ccrFetch("settings"),
-            ccrFetch("health"),
-            ccrFetch("tunnel/status"),
             ccrFetch("headroom/status"),
             ccrFetch("cli-tools/claude-settings"),
+            ccrFetch("usage/analytics"),
+            ccrFetch("usage/quota"),
+            ccrFetch("usage/budget?apiKeyId=om-marketai-1"),
+            ccrFetch("providers"),
           ]);
         setSettings({ ...defaultSettings, ...settingsData });
-        setProxyUrl(settingsData.outboundProxyUrl || "");
-        setNoProxy(settingsData.outboundNoProxy || "");
-        setHealth(healthData);
-        setTunnel(tunnelData);
         setHeadroom(headroomData);
         setClaude(claudeData);
+        setAnalytics(analyticsData);
+        setQuota(quotaData);
+        setBudget(budgetData);
+        setProviders(providersData);
       } catch (e) {
         setError(e instanceof Error ? e.message : "CCR 정보를 불러오지 못했습니다.");
       }
@@ -146,46 +161,17 @@ export default function CcrPage() {
     }
   };
 
-  const testProxy = async () => {
-    const url = proxyUrl.trim();
-    if (!url) {
-      setProxyTestMsg({ type: "error", text: "프록시 URL을 입력하세요." });
-      return;
-    }
-    setTestingProxy(true);
-    setProxyTestMsg(null);
-    try {
-      const data = await ccrFetch("settings/proxy-test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ proxyUrl: url }),
-      });
-      setProxyTestMsg({
-        type: "success",
-        text: data?.ok
-          ? `프록시 연결 성공 (HTTP ${data.status}) ${data.elapsedMs ?? ""}ms`
-          : describeProxyError(data?.error || "프록시 테스트 실패"),
-      });
-    } catch (e) {
-      setProxyTestMsg({
-        type: "error",
-        text: describeProxyError(
-          e instanceof Error ? e.message : "프록시 테스트 실패"
-        ),
-      });
-    } finally {
-      setTestingProxy(false);
-    }
-  };
-
   const loading = !settings;
+  const summary = analytics?.summary;
+  const activeConns = providers?.connections?.filter((c) => c.isActive) ?? [];
+  const gatewayOk = !!settings;
 
   return (
     <div className="p-8">
       <header className="mb-8">
         <h1 className="text-2xl font-bold tracking-tight">CCR 설정</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          9Router (Claude Code Router) — 라우팅, 보안, 관측 설정을 관리합니다.
+          OmniRoute (Claude Code Router) — 라우팅, 보안, 비용 관리를 관리합니다.
         </p>
       </header>
 
@@ -226,25 +212,23 @@ export default function CcrPage() {
                 <p className="mt-1 flex items-center gap-2 text-sm font-semibold">
                   <span
                     className={`inline-block h-2 w-2 rounded-full ${
-                      health?.ok ? "bg-[#3fb950]" : "bg-[#f85149]"
+                      gatewayOk ? "bg-[#3fb950]" : "bg-[#f85149]"
                     }`}
                   />
-                  {health?.ok ? "정상" : "오류"}
+                  {gatewayOk ? `정상 (${settings.apiPort})` : "오류"}
                 </p>
               </div>
               <div className="rounded-lg border border-[var(--border)] bg-[var(--panel-2)] p-4">
-                <p className="text-xs text-[var(--muted)]">터널</p>
+                <p className="text-xs text-[var(--muted)]">프로바이더 연결</p>
                 <p className="mt-1 flex items-center gap-2 text-sm font-semibold">
                   <span
                     className={`inline-block h-2 w-2 rounded-full ${
-                      tunnel?.tunnel?.running || tunnel?.tailscale?.running
-                        ? "bg-[#3fb950]"
-                        : "bg-[var(--muted)]"
+                      activeConns.length > 0 ? "bg-[#3fb950]" : "bg-[#f85149]"
                     }`}
                   />
-                  {tunnel?.tunnel?.running || tunnel?.tailscale?.running
-                    ? "실행 중"
-                    : "꺼짐"}
+                  {activeConns.length > 0
+                    ? `${activeConns.length}개 활성`
+                    : "연결 없음"}
                 </p>
               </div>
               <div className="rounded-lg border border-[var(--border)] bg-[var(--panel-2)] p-4">
@@ -259,11 +243,6 @@ export default function CcrPage() {
                 </p>
               </div>
             </div>
-            {tunnel?.tunnel?.publicUrl && (
-              <p className="mt-3 break-all font-mono text-xs text-[var(--muted)]">
-                {tunnel.tunnel.publicUrl}
-              </p>
-            )}
           </section>
 
           {/* 라우팅 */}
@@ -332,6 +311,14 @@ export default function CcrPage() {
                   }
                 />
               )}
+              <NumberRow
+                title="재시도 횟수"
+                desc="실패한 요청의 자동 재시도 수"
+                value={settings.requestRetry}
+                min={0}
+                max={10}
+                onSave={(v) => patchSettings({ requestRetry: v }, "재시도")}
+              />
             </div>
           </section>
 
@@ -350,128 +337,142 @@ export default function CcrPage() {
                   patchSettings({ requireLogin: !settings.requireLogin }, "로그인 필수")
                 }
               />
-              <ToggleRow
-                title="API 키 필수"
-                desc="ON이면 모델 API 요청에 API 키가 필요합니다."
-                checked={settings.requireApiKey}
-                onChange={() =>
-                  patchSettings(
-                    { requireApiKey: !settings.requireApiKey },
-                    "API 키 필수"
-                  )
-                }
-              />
             </div>
           </section>
 
-          {/* 관측 */}
+          {/* 무료예산 */}
           <section className="rounded-xl border border-[var(--border)] bg-[var(--panel)] p-6">
             <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
-              <Eye size={18} className="text-[var(--accent)]" />
-              관측 (Observability)
+              <BadgeDollarSign size={18} className="text-[var(--accent)]" />
+              무료 예산
             </h2>
-            <ToggleRow
-              title="요청 기록 활성화"
-              desc="요청 상세를 기록하여 로그 뷰에서 검사할 수 있습니다."
-              checked={settings.enableObservability}
-              onChange={() =>
-                patchSettings(
-                  { enableObservability: !settings.enableObservability },
-                  "관측 설정"
-                )
-              }
-            />
-          </section>
-
-          {/* 네트워크 */}
-          <section className="rounded-xl border border-[var(--border)] bg-[var(--panel)] p-6">
-            <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
-              <Network size={18} className="text-[var(--accent)]" />
-              아웃바운드 프록시
-            </h2>
-            <div className="space-y-4">
-              <ToggleRow
-                title="프록시 사용"
-                desc="OAuth 및 제공업체 아웃바운드 요청에 프록시를 적용합니다."
-                checked={settings.outboundProxyEnabled}
-                onChange={() =>
-                  patchSettings(
-                    { outboundProxyEnabled: !settings.outboundProxyEnabled },
-                    "프록시 사용"
-                  )
-                }
-              />
-              {settings.outboundProxyEnabled && (
-                <div className="space-y-4 border-t border-[var(--border)] pt-4">
-                  <div>
-                    <label className="mb-1.5 block text-sm text-[var(--muted)]">
-                      프록시 URL
-                    </label>
-                    <input
-                      type="text"
-                      value={proxyUrl}
-                      onChange={(e) => setProxyUrl(e.target.value)}
-                      placeholder="http://127.0.0.1:7897"
-                      className="w-full rounded-lg border border-[var(--border-light)] bg-[var(--panel-2)] px-4 py-2 text-sm outline-none focus:border-[var(--accent)]"
-                    />
-                    <p className="mt-1 text-xs text-[var(--muted)]">
-                      HTTP(S) forward proxy URL입니다 (예: http://127.0.0.1:7897).
-                      LiteLLM 같은 LLM 게이트웨이는 forward proxy가 아니므로 테스트에
-                      실패합니다. 비워두면 기존 환경 프록시를 상속합니다.
-                    </p>
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm text-[var(--muted)]">
-                      프록시 제외 (No Proxy)
-                    </label>
-                    <input
-                      type="text"
-                      value={noProxy}
-                      onChange={(e) => setNoProxy(e.target.value)}
-                      placeholder="localhost,127.0.0.1"
-                      className="w-full rounded-lg border border-[var(--border-light)] bg-[var(--panel-2)] px-4 py-2 text-sm outline-none focus:border-[var(--accent)]"
-                    />
-                    <p className="mt-1 text-xs text-[var(--muted)]">
-                      프록시를 우회할 호스트를 쉼표로 구분.
-                    </p>
-                  </div>
-                  {proxyTestMsg && (
-                    <p
-                      className={`text-sm ${
-                        proxyTestMsg.type === "success"
-                          ? "text-[#3fb950]"
-                          : "text-[#f85149]"
-                      }`}
-                    >
-                      {proxyTestMsg.text}
-                    </p>
-                  )}
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <button
-                      onClick={testProxy}
-                      disabled={testingProxy}
-                      className="flex-1 rounded-lg border border-[var(--border-light)] px-4 py-2 text-sm transition-colors hover:border-[var(--muted)] disabled:opacity-50"
-                    >
-                      {testingProxy ? "테스트 중..." : "프록시 테스트"}
-                    </button>
-                    <button
-                      onClick={() =>
-                        patchSettings(
-                          {
-                            outboundProxyUrl: proxyUrl.trim(),
-                            outboundNoProxy: noProxy.trim(),
-                          },
-                          "프록시 설정"
-                        )
-                      }
-                      className="flex-1 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[var(--accent-hover)]"
-                    >
-                      적용
-                    </button>
-                  </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--panel-2)] p-4">
+                <div>
+                  <p className="text-xs text-[var(--muted)]">월간 지출</p>
+                  <p className="mt-1 text-lg font-semibold">
+                    {fmtUsd(budget?.totalCostMonth ?? summary?.totalCost)}
+                  </p>
                 </div>
-              )}
+                <div className="text-right">
+                  <p className="text-xs text-[var(--muted)]">예산 상태</p>
+                  <p
+                    className={`mt-1 text-sm font-semibold ${
+                      budget?.budgetCheck?.allowed === false
+                        ? "text-[#f85149]"
+                        : "text-[#3fb950]"
+                    }`}
+                  >
+                    {budget?.budgetCheck?.allowed === false
+                      ? "제한됨"
+                      : "정상"}
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs text-[var(--muted)]">
+                  무료 쿼터 잔량 (프로바이더)
+                </p>
+                {quota?.providers && quota.providers.length > 0 ? (
+                  quota.providers.map((p) => (
+                    <div
+                      key={p.connectionId}
+                      className="rounded-lg border border-[var(--border)] bg-[var(--panel-2)] p-3"
+                    >
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-medium">{p.name}</span>
+                        <span
+                          className={`text-xs ${
+                            p.percentRemaining < 25
+                              ? "text-[#f85149]"
+                              : p.percentRemaining < 60
+                                ? "text-[#d29922]"
+                                : "text-[var(--muted)]"
+                          }`}
+                        >
+                          잔량 {Math.round(p.percentRemaining)}%
+                        </span>
+                      </div>
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--border-light)]">
+                        <div
+                          className={`h-full rounded-full ${
+                            p.percentRemaining < 25
+                              ? "bg-[#f85149]"
+                              : p.percentRemaining < 60
+                                ? "bg-[#d29922]"
+                                : "bg-[#3fb950]"
+                          }`}
+                          style={{ width: `${p.percentRemaining}%` }}
+                        />
+                      </div>
+                      {p.resetAt && (
+                        <p className="mt-1 text-xs text-[var(--muted)]">
+                          리셋: {p.resetAt}
+                        </p>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-[var(--muted)]">쿼터 정보 없음</p>
+                )}
+              </div>
             </div>
+          </section>
+
+          {/* 폴백 */}
+          <section className="rounded-xl border border-[var(--border)] bg-[var(--panel)] p-6">
+            <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
+              <Zap size={18} className="text-[var(--accent)]" />
+              폴백 상태
+            </h2>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <Stat
+                label="폴백 발생"
+                value={`${summary?.fallbackCount ?? 0}회`}
+              />
+              <Stat
+                label="폴백 비율"
+                value={`${summary?.fallbackRatePct ?? 0}%`}
+              />
+              <Stat
+                label="콤보 전략"
+                value={settings.comboStrategy === "round-robin" ? "순환" : "폴백"}
+              />
+              <Stat
+                label="계정 전략"
+                value={
+                  settings.fallbackStrategy === "round-robin"
+                    ? "라운드 로빈"
+                    : "Fill-First"
+                }
+              />
+            </div>
+          </section>
+
+          {/* 절감 */}
+          <section className="rounded-xl border border-[var(--border)] bg-[var(--panel)] p-6">
+            <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
+              <PiggyBank size={18} className="text-[var(--accent)]" />
+              절감 현황
+            </h2>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <Stat label="총 비용" value={fmtUsd(summary?.totalCost)} />
+              <Stat label="절감액" value={fmtUsd(summary?.flexSavings)} />
+              <Stat
+                label="절감 토큰"
+                value={`${(summary?.flexUsageSavingsTokens ?? 0).toLocaleString()}`}
+              />
+              <Stat
+                label="총 요청"
+                value={`${(summary?.totalRequests ?? 0).toLocaleString()}`}
+              />
+            </div>
+            {summary && summary.totalCost < 0.005 && (
+              <p className="mt-3 flex items-center gap-1.5 text-sm text-[#3fb950]">
+                <TrendingDown size={14} />
+                무료 제공자(무료 쿼터)만 사용 중 — AI 달러 비용 0원으로 운영 중입니다.
+              </p>
+            )}
           </section>
 
           {/* Claude Code */}
@@ -493,12 +494,6 @@ export default function CcrPage() {
                     }`}
                   />
                   {claude?.installed ? "예" : "아니오"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-[var(--muted)]">9Router 연동</span>
-                <span className="text-sm font-semibold">
-                  {claude?.has9Router ? "사용 중" : "미사용"}
                 </span>
               </div>
               <div className="flex items-center justify-between">
@@ -592,6 +587,15 @@ function NumberRow({
           className="w-20 rounded-lg border border-[var(--border-light)] bg-[var(--panel-2)] px-3 py-1.5 text-center text-sm outline-none focus:border-[var(--accent)]"
         />
       </div>
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--panel-2)] p-4">
+      <p className="text-xs text-[var(--muted)]">{label}</p>
+      <p className="mt-1 text-base font-semibold">{value}</p>
     </div>
   );
 }

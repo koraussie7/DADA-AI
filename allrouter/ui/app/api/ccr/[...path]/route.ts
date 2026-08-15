@@ -1,20 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHash } from "crypto";
-import { readFileSync } from "fs";
 
 const CCR_BASE = process.env.CCR_BASE_URL || "http://127.0.0.1:20128";
-const CCR_DATA_DIR = process.env.CCR_DATA_DIR || "/root/.9router";
-const CLI_TOKEN_SALT = "9r-cli-auth";
-const CLI_TOKEN_HEADER = "x-9r-cli-token";
-
-function getCliToken(): string {
-  const machineId = readFileSync(`${CCR_DATA_DIR}/machine-id`, "utf8").trim();
-  const cliSecret = readFileSync(`${CCR_DATA_DIR}/auth/cli-secret`, "utf8").trim();
-  return createHash("sha256")
-    .update(machineId + CLI_TOKEN_SALT + cliSecret)
-    .digest("hex")
-    .substring(0, 16);
-}
+const CCR_MANAGE_KEY =
+  process.env.CCR_MANAGE_KEY || "om-prod-manage-9f2c1d7e8b0a4c5f";
 
 export async function GET(
   req: NextRequest,
@@ -59,7 +47,7 @@ async function proxy(
   }
 
   const headers: Record<string, string> = {
-    [CLI_TOKEN_HEADER]: getCliToken(),
+    Authorization: `Bearer ${CCR_MANAGE_KEY}`,
   };
   if (body && body.byteLength > 0) {
     headers["Content-Type"] = "application/json";
