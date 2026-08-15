@@ -86,6 +86,39 @@ interface ProvidersStatus {
   }[];
 }
 
+interface ModelAliasResponse {
+  aliases?: Record<string, string>;
+}
+
+interface CatalogModel {
+  id: string;
+  name: string;
+  type: string;
+  context_length: number | null;
+  custom?: boolean;
+}
+
+interface CatalogGroup {
+  provider: string;
+  active: boolean;
+  models?: CatalogModel[];
+}
+
+interface ModelCatalog {
+  catalog?: Record<string, CatalogGroup>;
+}
+
+interface ProviderNode {
+  id: string;
+  name: string;
+  prefix: string;
+  baseUrl: string;
+}
+
+interface ProviderNodesResponse {
+  nodes?: ProviderNode[];
+}
+
 type Notice = { type: "success" | "error"; text: string } | null;
 
 const defaultSettings: CCRSettings = {
@@ -113,13 +146,17 @@ export default function CcrPage() {
   const [quota, setQuota] = useState<QuotaStatus | null>(null);
   const [budget, setBudget] = useState<BudgetStatus | null>(null);
   const [providers, setProviders] = useState<ProvidersStatus | null>(null);
+  const [aliases, setAliases] = useState<ModelAliasResponse | null>(null);
+  const [catalog, setCatalog] = useState<ModelCatalog | null>(null);
+  const [nodes, setNodes] = useState<ProviderNodesResponse | null>(null);
+  const [routeQuery, setRouteQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
 
   useEffect(() => {
     (async () => {
       try {
-        const [settingsData, headroomData, claudeData, analyticsData, quotaData, budgetData, providersData] =
+        const [settingsData, headroomData, claudeData, analyticsData, quotaData, budgetData, providersData, aliasesData, catalogData, nodesData] =
           await Promise.all([
             ccrFetch("settings"),
             ccrFetch("headroom/status"),
@@ -128,6 +165,9 @@ export default function CcrPage() {
             ccrFetch("usage/quota"),
             ccrFetch("usage/budget?apiKeyId=om-marketai-1"),
             ccrFetch("providers"),
+            ccrFetch("models/alias"),
+            ccrFetch("models/catalog"),
+            ccrFetch("provider-nodes"),
           ]);
         setSettings({ ...defaultSettings, ...settingsData });
         setHeadroom(headroomData);
@@ -136,6 +176,9 @@ export default function CcrPage() {
         setQuota(quotaData);
         setBudget(budgetData);
         setProviders(providersData);
+        setAliases(aliasesData);
+        setCatalog(catalogData);
+        setNodes(nodesData);
       } catch (e) {
         setError(e instanceof Error ? e.message : "CCR 정보를 불러오지 못했습니다.");
       }
@@ -165,6 +208,35 @@ export default function CcrPage() {
   const summary = analytics?.summary;
   const activeConns = providers?.connections?.filter((c) => c.isActive) ?? [];
   const gatewayOk = !!settings;
+
+  const aliasEntries = Object.entries(aliases?.aliases ?? {});
+  const nodeList = nodes?.nodes ?? [];
+  const connNames = providers?.connections?.map((c) => c.name) ?? [];
+  const catalogGroups = Object.entries(catalog?.catalog ?? {}).sort(
+    (a, b) => (b[1].models?.length ?? 0) - (a[1].models?.length ?? 0)
+  );
+  const routeRows = catalogGroups.flatMap(([key, g]) =>
+    (g.models ?? []).map((m) => {
+      const base = m.id.split("/").slice(1).join("/");
+      return {
+        ...m,
+        groupKey: key,
+        providerName: g.provider,
+        active: g.active,
+        aliased: !!aliases?.aliases?.[base],
+      };
+    })
+  );
+  const totalModels = routeRows.length;
+  const q = routeQuery.trim().toLowerCase();
+  const filteredRows = q
+    ? routeRows.filter(
+        (r) =>
+          r.id.toLowerCase().includes(q) ||
+          r.providerName.toLowerCase().includes(q) ||
+          r.type.toLowerCase().includes(q)
+      )
+    : routeRows;
 
   return (
     <div className="p-8">
@@ -199,7 +271,7 @@ export default function CcrPage() {
           CCR 상태를 불러오는 중...
         </div>
       ) : (
-        <div className="max-w-2xl space-y-6">
+        <div className="max-w-4xl space-y-6">
           {/* 상태 */}
           <section className="rounded-xl border border-[var(--border)] bg-[var(--panel)] p-6">
             <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
@@ -320,6 +392,144 @@ export default function CcrPage() {
                 onSave={(v) => patchSettings({ requestRetry: v }, "재시도")}
               />
             </div>
+          </section>
+
+          {/* 라우팅 맵 */}
+          <section className="rounded-xl border border-[var(--border)] bg-[var(--panel)] p-6">
+            <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
+              <Route size={18} className="text-[var(--accent)]" />
+              API 라우팅 맵
+            </h2>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto_1fr_auto_1fr]">
+              <MapColumn
+                title="요청 모델 (별칭)"
+                items={aliasEntries.slice(0, 12).map(([k]) => k)}
+                note={aliasEntries.length > 12 ? `외 ${aliasEntries.length - 12}개` : ""}
+              />
+              <div className="flex items-center justify-center text-[var(--muted)] md:px-1">
+                →
+              </div>
+              <MapColumn
+                title="라우팅 노드"
+                items={nodeList.map((n) => n.name)}
+                note={
+                  nodeList.length > 0
+                    ? `${nodeList[0].prefix} · ${nodeList[0].baseUrl}`
+                    : ""
+                }
+              />
+              <div className="flex items-center justify-center text-[var(--muted)] md:px-1">
+                →
+              </div>
+              <MapColumn
+                title="프로바이더 연결"
+                items={connNames}
+                note={activeConns.length > 0 ? `${activeConns.length}개 활성` : ""}
+              />
+            </div>
+
+            <p className="mb-3 mt-6 text-xs text-[var(--muted)]">
+              프로바이더 그룹 (카탈로그)
+            </p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {catalogGroups.map(([key, g]) => (
+                <div
+                  key={key}
+                  className="rounded-lg border border-[var(--border)] bg-[var(--panel-2)] p-3"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <code className="font-mono text-xs text-[var(--accent)]">{key}</code>
+                    <span
+                      className={`inline-block h-2 w-2 shrink-0 rounded-full ${
+                        g.active ? "bg-[#3fb950]" : "bg-[var(--muted)]"
+                      }`}
+                    />
+                  </div>
+                  <p className="mt-1 truncate text-xs text-[var(--muted)]" title={g.provider}>
+                    {g.provider}
+                  </p>
+                  <p className="mt-1 text-sm font-semibold">
+                    {(g.models?.length ?? 0).toLocaleString()} 모델
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* 라우팅 테이블 */}
+          <section className="rounded-xl border border-[var(--border)] bg-[var(--panel)] p-6">
+            <h2 className="mb-1 flex items-center gap-2 text-lg font-semibold">
+              <Route size={18} className="text-[var(--accent)]" />
+              API 라우팅 테이블
+            </h2>
+            <p className="mb-4 text-xs text-[var(--muted)]">
+              카탈로그 모델 {totalModels.toLocaleString()}개 — "별칭" 배지는
+              요청 모델명이 별칭으로 라우팅됨을 의미합니다.
+            </p>
+            <input
+              type="search"
+              value={routeQuery}
+              onChange={(e) => setRouteQuery(e.target.value)}
+              placeholder="모델/프로바이더/유형 검색..."
+              className="mb-4 w-full max-w-sm rounded-lg border border-[var(--border-light)] bg-[var(--panel-2)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+            />
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[560px] text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--border)] text-left text-xs text-[var(--muted)]">
+                    <th className="py-2 pr-3 font-medium">모델</th>
+                    <th className="py-2 pr-3 font-medium">프로바이더</th>
+                    <th className="py-2 pr-3 font-medium">유형</th>
+                    <th className="py-2 pr-3 text-right font-medium">컨텍스트</th>
+                    <th className="py-2 font-medium">라우팅</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRows.slice(0, 100).map((r, i) => (
+                    <tr
+                      key={`${r.id}-${i}`}
+                      className="border-b border-[var(--border-light)]/50 last:border-0"
+                    >
+                      <td className="py-2 pr-3">
+                        <code className="font-mono text-xs">{r.id}</code>
+                      </td>
+                      <td className="py-2 pr-3 text-xs text-[var(--muted)]">
+                        {r.providerName}
+                      </td>
+                      <td className="py-2 pr-3">
+                        <span className="rounded-full border border-[var(--border-light)] px-2 py-0.5 text-[11px]">
+                          {r.type || "chat"}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-3 text-right text-xs text-[var(--muted)]">
+                        {r.context_length ? r.context_length.toLocaleString() : "—"}
+                      </td>
+                      <td className="py-2">
+                        {r.aliased ? (
+                          <span className="rounded-full bg-[#3fb950]/10 px-2 py-0.5 text-[11px] font-semibold text-[#3fb950]">
+                            별칭
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-[var(--muted)]">직접</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredRows.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="py-6 text-center text-sm text-[var(--muted)]">
+                        일치하는 모델 없음
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {filteredRows.length > 100 && (
+              <p className="mt-3 text-xs text-[var(--muted)]">
+                {filteredRows.length - 100}개 이상은 검색으로 확인하세요.
+              </p>
+            )}
           </section>
 
           {/* 보안 */}
@@ -596,6 +806,34 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg border border-[var(--border)] bg-[var(--panel-2)] p-4">
       <p className="text-xs text-[var(--muted)]">{label}</p>
       <p className="mt-1 text-base font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function MapColumn({
+  title,
+  items,
+  note,
+}: {
+  title: string;
+  items: string[];
+  note?: string;
+}) {
+  return (
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--panel-2)] p-3">
+      <p className="mb-2 text-xs font-medium text-[var(--muted)]">{title}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {items.map((it) => (
+          <code
+            key={it}
+            className="rounded bg-[var(--border-light)]/40 px-1.5 py-0.5 font-mono text-[11px]"
+          >
+            {it}
+          </code>
+        ))}
+        {items.length === 0 && <span className="text-xs text-[var(--muted)]">—</span>}
+      </div>
+      {note && <p className="mt-2 truncate text-[11px] text-[var(--muted)]">{note}</p>}
     </div>
   );
 }
