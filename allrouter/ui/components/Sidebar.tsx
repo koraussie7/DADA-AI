@@ -13,6 +13,7 @@ import {
   Network,
   ExternalLink,
   LogOut,
+  Box,
 } from "lucide-react";
 
 interface SessionUser {
@@ -28,6 +29,7 @@ const menuItems = [
   { name: "과금", icon: CreditCard, href: "/dashboard/billing" },
   { name: "모델", icon: Cpu, href: "/dashboard/models" },
   { name: "CCR", icon: Network, href: "/dashboard/ccr" },
+  { name: "Olla", icon: Box, href: "/dashboard/olla" },
   { name: "설정", icon: Settings, href: "/dashboard/settings" },
 ];
 
