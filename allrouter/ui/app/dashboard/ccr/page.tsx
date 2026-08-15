@@ -58,6 +58,25 @@ interface ClaudeSettings {
 
 type Notice = { type: "success" | "error"; text: string } | null;
 
+function describeProxyError(message: string): string {
+  if (/request was cancelled/i.test(message)) {
+    return "연결이 취소되었습니다. 지정한 URL이 HTTP forward proxy로 동작하지 않는 것 같습니다. LiteLLM 등 일반 API 서버는 프록시가 아니므로 테스트에 실패합니다. http/https forward proxy URL을 입력하세요.";
+  }
+  if (/ECONNREFUSED/i.test(message)) {
+    return "연결이 거부되었습니다. 해당 주소:포트에서 프록시가 실행 중인지 확인하세요.";
+  }
+  if (/Invalid URL protocol|must start with/i.test(message)) {
+    return "http:// 또는 https:// 로 시작하는 URL만 지원됩니다. (SOCKS5 프록시는 지원되지 않습니다)";
+  }
+  if (/Invalid proxy URL/i.test(message)) {
+    return "프록시 URL 형식이 올바르지 않습니다.";
+  }
+  if (/timed out|AbortError/i.test(message)) {
+    return "프록시 테스트가 시간 초과되었습니다. 프록시 주소가 응답하는지 확인하세요.";
+  }
+  return message;
+}
+
 const defaultSettings: CCRSettings = {
   fallbackStrategy: "round-robin",
   stickyRoundRobinLimit: 3,
@@ -145,12 +164,14 @@ export default function CcrPage() {
         type: "success",
         text: data?.ok
           ? `프록시 연결 성공 (HTTP ${data.status}) ${data.elapsedMs ?? ""}ms`
-          : data?.error || "프록시 테스트 실패",
+          : describeProxyError(data?.error || "프록시 테스트 실패"),
       });
     } catch (e) {
       setProxyTestMsg({
         type: "error",
-        text: e instanceof Error ? e.message : "프록시 테스트 실패",
+        text: describeProxyError(
+          e instanceof Error ? e.message : "프록시 테스트 실패"
+        ),
       });
     } finally {
       setTestingProxy(false);
@@ -394,7 +415,9 @@ export default function CcrPage() {
                       className="w-full rounded-lg border border-[var(--border-light)] bg-[var(--panel-2)] px-4 py-2 text-sm outline-none focus:border-[var(--accent)]"
                     />
                     <p className="mt-1 text-xs text-[var(--muted)]">
-                      비워두면 기존 환경 프록시를 상속합니다.
+                      HTTP(S) forward proxy URL입니다 (예: http://127.0.0.1:7897).
+                      LiteLLM 같은 LLM 게이트웨이는 forward proxy가 아니므로 테스트에
+                      실패합니다. 비워두면 기존 환경 프록시를 상속합니다.
                     </p>
                   </div>
                   <div>
