@@ -16,8 +16,25 @@ interface SpendLog {
   completion_tokens?: number;
   spend?: number;
   startTime?: string;
+  api_key?: string;
   metadata?: { status?: string };
   status?: string;
+}
+
+interface ApiUsageRow {
+  key: string;
+  label: string;
+  requests: number;
+  tokens: number;
+  spend: number;
+  models: Set<string>;
+}
+
+function fmtKey(key: string): string {
+  if (!key) return "알 수 없음";
+  if (key === "litellm_proxy_master_key") return "master-key";
+  const last = key.split("-").pop() || "";
+  return `sk-…-${last}`;
 }
 
 export default function DashboardPage() {
@@ -30,7 +47,7 @@ export default function DashboardPage() {
     (async () => {
       try {
         const [logsData, spendData] = await Promise.all([
-          llmFetch("spend/logs"),
+          llmFetch("spend/logs?limit=1000"),
           llmFetch("global/spend"),
         ]);
         setLogs(Array.isArray(logsData) ? logsData : []);
@@ -48,6 +65,43 @@ export default function DashboardPage() {
     totalRequests > 0 ? Math.round((successCount / totalRequests) * 1000) / 10 : 100;
   const totalCost = logs.reduce((acc, l) => acc + (l.spend || 0), 0);
   const totalTokens = logs.reduce((acc, l) => acc + (l.total_tokens || 0), 0);
+  const freeRequests = logs.filter((l) => !l.spend).length;
+  const freeRate =
+    totalRequests > 0 ? Math.round((freeRequests / totalRequests) * 1000) / 10 : 100;
+
+  // 일별 토큰/비용 (실데이터)
+  const dailyMap = new Map<string, { date: string; tokens: number; cost: number }>();
+  logs.forEach((l) => {
+    const d = (l.startTime || "").slice(0, 10);
+    if (!d) return;
+    const e = dailyMap.get(d) || { date: d, tokens: 0, cost: 0 };
+    e.tokens += l.total_tokens || 0;
+    e.cost += l.spend || 0;
+    dailyMap.set(d, e);
+  });
+  const dailyData = [...dailyMap.values()]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-14);
+
+  // API 키별 토큰 사용량
+  const apiMap = new Map<string, ApiUsageRow>();
+  logs.forEach((l) => {
+    const k = l.api_key || "unknown";
+    const row = apiMap.get(k) || {
+      key: k,
+      label: fmtKey(k),
+      requests: 0,
+      tokens: 0,
+      spend: 0,
+      models: new Set<string>(),
+    };
+    row.requests += 1;
+    row.tokens += l.total_tokens || 0;
+    row.spend += l.spend || 0;
+    if (l.model_group || l.model) row.models.add(l.model_group || l.model || "");
+    apiMap.set(k, row);
+  });
+  const apiUsage = [...apiMap.values()].sort((a, b) => b.tokens - a.tokens);
 
   const stats = [
     {
@@ -138,7 +192,7 @@ export default function DashboardPage() {
       {/* 차트 + 모델 분포 */}
       <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <CostChart />
+          <CostChart data={dailyData} freeRate={freeRate} />
         </div>
         <div className="rounded-xl border border-[var(--border)] bg-[var(--panel)] p-6">
           <h2 className="mb-4 text-lg font-semibold">모델 분포</h2>
@@ -185,6 +239,76 @@ export default function DashboardPage() {
               />
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* API별 토큰 사용량 */}
+      <div className="mb-8 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--panel)]">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] p-6">
+          <div>
+            <h2 className="text-lg font-semibold">API별 토큰 사용량</h2>
+            <p className="text-xs text-[var(--muted)]">
+              지출 로그 기준 (총 {totalRequests.toLocaleString()}건 ·{" "}
+              {totalTokens.toLocaleString()} 토큰 · 비용 ${totalCost.toFixed(4)})
+            </p>
+          </div>
+          {freeRate >= 99.9 && (
+            <span className="rounded-full bg-[#3fb950]/10 px-3 py-1 text-xs font-semibold text-[#3fb950]">
+              무료 라우팅 {freeRate}%
+            </span>
+          )}
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[520px] text-left text-sm">
+            <thead className="bg-[var(--panel-2)] text-[var(--muted)]">
+              <tr>
+                <th className="p-4 font-medium">API 키</th>
+                <th className="p-4 font-medium">요청</th>
+                <th className="p-4 font-medium">토큰</th>
+                <th className="p-4 font-medium">비용</th>
+                <th className="p-4 font-medium">모델</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--border)]">
+              {apiUsage.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-8 text-center text-[var(--muted)]">
+                    아직 요청 기록이 없습니다.
+                  </td>
+                </tr>
+              ) : (
+                apiUsage.map((row) => (
+                  <tr key={row.key} className="transition-colors hover:bg-[var(--panel-2)]">
+                    <td className="p-4 font-mono text-xs text-[var(--accent)]">
+                      {row.label}
+                    </td>
+                    <td className="p-4">{row.requests.toLocaleString()}</td>
+                    <td className="p-4 font-semibold">{row.tokens.toLocaleString()}</td>
+                    <td className="p-4 text-[var(--muted)]">
+                      ${row.spend.toFixed(4)}
+                    </td>
+                    <td className="p-4">
+                      <div className="flex flex-wrap gap-1">
+                        {[...row.models].slice(0, 4).map((m) => (
+                          <span
+                            key={m}
+                            className="rounded bg-[var(--panel-2)] px-2 py-0.5 text-[11px] text-[var(--muted)]"
+                          >
+                            {m}
+                          </span>
+                        ))}
+                        {row.models.size > 4 && (
+                          <span className="text-[11px] text-[var(--muted)]">
+                            +{row.models.size - 4}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
