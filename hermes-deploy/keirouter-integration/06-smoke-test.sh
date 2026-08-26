@@ -1,6 +1,9 @@
 #!/bin/bash
 # End-to-end smoke test for keirouter-fallback integration on node110.
 # Reads KEIROUTER_KEY from /etc/hermes/keirouter.env.
+# Uses /admin/mark-failing + /admin/clear-failing to deterministically trigger
+# the keirouter fallback tier without spamming parallel requests or swapping
+# the on-disk config.
 set -uo pipefail
 
 SR=http://127.0.0.1:4001
@@ -14,22 +17,48 @@ fi
 # shellcheck disable=SC1090
 source "$ENV_FILE"
 KR_KEY="$KEIROUTER_KEY"
-KR_COOKIES=/tmp/keirouter.cookies
 
 pass=0
 fail=0
 
+# --- helpers --------------------------------------------------------------
+mark_failing() {
+  local m="$1"
+  curl -s -X POST $SR/admin/mark-failing \
+    -H "Content-Type: application/json" \
+    -d "{\"model\":\"$m\",\"ttl_seconds\":600,\"reason\":\"smoke-test\"}" >/dev/null
+}
+clear_failing() {
+  local m="$1"
+  curl -s -X POST $SR/admin/clear-failing \
+    -H "Content-Type: application/json" \
+    -d "{\"model\":\"$m\"}" >/dev/null
+}
+clear_all_failing() {
+  local models=(
+    groq-gpt-oss-120b groq-qwen3.6-27b
+    openrouter-nemotron-3-super tokenrouter-nemotron-3-super
+    big-pickle deepseek-v4-pro kimi-k2.6 glm-5.1 minimax-m2.5
+    keirouter:chain:fast-fallback keirouter:chain:coding-heavy
+  )
+  for m in "${models[@]}"; do
+    clear_failing "$m"
+  done
+}
 assert() {
   local label="$1" cond="$2" detail="$3"
   if eval "$cond"; then echo "  PASS: $label"; pass=$((pass+1))
-  else echo "  FAIL: $label — $detail"; fail=$((fail+1))
+  else echo "  FAIL: $label -- $detail"; fail=$((fail+1))
   fi
 }
-
 extract_field() {
   python3 -c "import sys,json; d=json.loads(sys.argv[1]); $2" "$1" 2>/dev/null
 }
 
+# Always start clean
+clear_all_failing
+
+# --- scenarios ------------------------------------------------------------
 echo "=== A: smart-router healthy ==="
 H=$(curl -s $SR/health)
 assert "smart-router reports healthy" '[[ "$H" == *healthy* ]]' "got=$H"
@@ -69,68 +98,62 @@ assert "baseline did NOT use keirouter" '[[ "$MODEL_D" != keirouter* ]]' "got=$M
 echo "  -> model=$MODEL_D tried=$TRIED_D"
 echo
 
-echo "=== E: forced LiteLLM exhaustion -> keirouter takes over ==="
-echo "  priming failure_until via 100 parallel requests..."
-for i in $(seq 1 100); do
-  curl -s -X POST $SR/v1/chat/completions \
-    -H "Content-Type: application/json" \
-    -d '{"model":"auto","messages":[{"role":"user","content":"hi"}]}' \
-    > /dev/null 2>&1 &
+echo "=== E: all LiteLLM models failing -> keirouter takes over ==="
+echo "  marking fast + slow LiteLLM models failing via /admin/mark-failing..."
+for m in groq-gpt-oss-120b groq-qwen3.6-27b \
+         openrouter-nemotron-3-super tokenrouter-nemotron-3-super \
+         big-pickle deepseek-v4-pro kimi-k2.6 glm-5.1 minimax-m2.5; do
+  mark_failing "$m"
 done
-wait
-sleep 2
+FAIL_CT=$(curl -s $SR/admin/failing | python3 -c "import sys,json; print(len(json.load(sys.stdin)['failing']))")
+echo "  -> failure set size = $FAIL_CT"
 RE=$(curl -s -X POST $SR/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{"model":"auto","messages":[{"role":"user","content":"ping after exhaustion"}]}')
+  -d '{"model":"auto","messages":[{"role":"user","content":"ping during keirouter fallback"}]}')
 TRIED_E=$(extract_field "$RE" "print(','.join(d.get('routing_info',{}).get('tried',[])))")
 CHOICE_E=$(extract_field "$RE" "print(bool(d.get('choices')))")
 echo "  -> tried=$TRIED_E"
 assert "post-exhaustion request still returns 200" '[[ "$CHOICE_E" == "True" ]]' "raw=$RE"
+assert "tried list includes keirouter:chain:fast-fallback" '[[ "$TRIED_E" == *keirouter:chain:fast-fallback* ]]' "tried=$TRIED_E"
 echo
 
-echo "=== F: simulate all LiteLLM unreachable, keirouter is sole survivor ==="
-echo "  temporarily replace smart-router config with keirouter-only candidates..."
-cp /opt/smart-router/config.json /tmp/sr-cfg.bak.json
-python3 -c "
-import json
-c = json.load(open('/opt/smart-router/config.json'))
-c['fast_models'] = ['__nonexistent_model_for_test__']
-c['slow_models'] = []
-with open('/opt/smart-router/config.json','w') as f:
-    json.dump(c, f, indent=2)
-"
-curl -s -X POST $SR/config/reload > /dev/null
-sleep 1
+echo "=== F: /admin/failing list reflects marks; /admin/clear-failing restores ==="
+F_BEFORE=$(curl -s $SR/admin/failing | python3 -c "import sys,json; print(len(json.load(sys.stdin)['failing']))")
+clear_failing "groq-gpt-oss-120b"
+clear_failing "big-pickle"
+F_AFTER=$(curl -s $SR/admin/failing | python3 -c "import sys,json; print(len(json.load(sys.stdin)['failing']))")
+assert "list-failing count decreased after clear-failing" '[[ "$F_AFTER" -lt "$F_BEFORE" ]]' "before=$F_BEFORE after=$F_AFTER"
+# Restore the rest for downstream tests
+clear_all_failing
 RF=$(curl -s -X POST $SR/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{"model":"auto","messages":[{"role":"user","content":"hi"}]}')
-TRIED_F=$(extract_field "$RF" "print(','.join(d.get('routing_info',{}).get('tried',[])))")
-CHOICE_F=$(extract_field "$RF" "print(bool(d.get('choices')))")
+  -d '{"model":"auto","messages":[{"role":"user","content":"hi after restore"}]}')
 MODEL_F=$(extract_field "$RF" "print(d.get('routing_info',{}).get('model','?'))")
-echo "  -> tried=$TRIED_F model=$MODEL_F"
-# Restore config
-cp /tmp/sr-cfg.bak.json /opt/smart-router/config.json
-curl -s -X POST $SR/config/reload > /dev/null
-assert "keirouter-only config still returns 200" '[[ "$CHOICE_F" == "True" ]]' "raw=$RF"
-assert "tried list includes keirouter:chain:fast-fallback" 'echo "$TRIED_F" | grep -q "keirouter:chain:fast-fallback"' "tried=$TRIED_F"
+CHOICE_F=$(extract_field "$RF" "print(bool(d.get('choices')))")
+assert "after clear-failing baseline uses LiteLLM" '[[ "$CHOICE_F" == "True" && "$MODEL_F" != keirouter* ]]' "model=$MODEL_F"
 echo
 
-echo "=== G: keirouter down -> 503 with tried list ==="
+echo "=== G: keirouter down -> 503 with tried list when LiteLLM also exhausted ==="
+# Mark LiteLLM models failing so smart-router is forced into the keirouter tier
+for m in groq-gpt-oss-120b groq-qwen3.6-27b \
+         openrouter-nemotron-3-super tokenrouter-nemotron-3-super \
+         big-pickle deepseek-v4-pro kimi-k2.6 glm-5.1 minimax-m2.5; do
+  mark_failing "$m"
+done
 pkill -f "/usr/local/bin/keirouter" 2>/dev/null
 sleep 3
 RG=$(curl -s -o /tmp/rg.body -w "%{http_code}" -X POST $SR/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model":"auto","messages":[{"role":"user","content":"hi"}]}')
 echo "  -> http=$RG"
+assert "503 when both LiteLLM and keirouter unreachable" '[[ "$RG" == "503" ]]' "got=$RG"
+TRIED_G=$(extract_field "$(cat /tmp/rg.body)" "print(','.join(d.get('error',{}).get('tried',[])))")
+assert "tried list contains keirouter:chain:fast-fallback" '[[ "$TRIED_G" == *keirouter:chain:fast-fallback* ]]' "tried=$TRIED_G"
+# Restart keirouter so subsequent tests / prod traffic recovers
 /usr/local/bin/keirouter &>/dev/null &
 sleep 4
-# Status code might be 200 (LiteLLM still up) or 503 (keirouter unreachable) -- both valid since
-# the baseline doesn't require keirouter when LiteLLM is healthy.
-echo "  -> baseline still works without keirouter (expected 200)"
-RG2=$(curl -s -o /dev/null -w "%{http_code}" -X POST $SR/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"auto","messages":[{"role":"user","content":"hi"}]}')
-echo "  -> post-restart http=$RG2"
+# Clear all marks
+clear_all_failing
 echo
 
 echo "================================================"
