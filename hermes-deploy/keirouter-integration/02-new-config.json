@@ -1,0 +1,14 @@
+{
+  "_comment": "allrouter_key and keirouter_key are loaded at smart-router startup from /etc/hermes/{allrouter,keirouter}.env (mode 0600, owner root, NEVER committed). Both keys are listed here as <placeholder> so the structure is visible; replace at apply time with: jq '.allrouter_key=env.ALLROUTER_KEY | .keirouter_key=env.KEIROUTER_KEY' 02-new-config.json",
+  "allrouter_url": "http://127.0.0.1:4003",
+  "allrouter_key": "<load from /etc/hermes/allrouter.env>",
+  "keirouter_url": "http://127.0.0.1:20180",
+  "keirouter_key": "<load from /etc/hermes/keirouter.env>",
+  "keirouter_chain_simple": "production",
+  "keirouter_chain_complex": "coding-heavy",
+  "port": 4001,
+  "complexity_threshold": 200,
+  "slow_models": ["big-pickle", "deepseek-v4-pro", "kimi-k2.6", "glm-5.1", "minimax-m2.5"],
+  "fast_models": ["openrouter-nemotron-3-super", "tokenrouter-nemotron-3-super", "groq-gpt-oss-120b", "groq-qwen3.6-27b"],
+  "mcp_tools": []
+}
