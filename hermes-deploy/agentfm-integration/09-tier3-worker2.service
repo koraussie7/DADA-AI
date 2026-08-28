@@ -1,0 +1,36 @@
+[Unit]
+Description=agentfm worker #2 (Podman container, Ollama qwen2.5:1.5b, AgentName=coder)
+# Tier 3: same swarm as Tier 2 worker (default), different AgentName.
+# smart-router routes complex requests here via agentfm_chain_complex=coder.
+# Mirror of 08-tier2-worker.service — relay peer-id MUST NOT be committed.
+# __BOOTSTRAP__ placeholder is replaced by 09-tier3-prepare.sh via sed:
+#   __BOOTSTRAP__  ->  /ip4/127.0.0.1/tcp/4001/p2p/<relay-peer-id>
+After=agentfm-relay.service agentfm-api.service ollama.service
+Wants=agentfm-relay.service agentfm-api.service
+
+[Service]
+Type=simple
+User=agentfm
+Environment=HOME=/var/lib/agentfm
+# run.sh reads this and forwards to Ollama /api/generate. Tier 2 worker uses
+# qwen2.5:0.5b (default in run.sh), worker2 uses 1.5b via env override.
+Environment=AGENTFM_MODEL=qwen2.5:1.5b
+ExecStart=/usr/local/bin/agentfm \
+  -mode worker \
+  -swarmkey /etc/agentfm/swarm.key \
+  -bootstrap __BOOTSTRAP__ \
+  -agentdir /opt/agentfm-worker2/agentdir \
+  -image agentfm-ollama-bridge:latest \
+  -agent coder \
+  -model qwen2.5:1.5b \
+  -desc "Ollama qwen2.5:1.5b coder agent (Tier 3 multi-agent swarm)" \
+  -capability chat \
+  -maxtasks 1 \
+  -log-format json \
+  -log-level info
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
