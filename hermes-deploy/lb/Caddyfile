@@ -1,0 +1,91 @@
+# ============================================================================
+# Hermes Mesh Load Balancer — Caddyfile (TEMPLATE)
+#
+# This file is rendered by /usr/local/bin/hermes-lb-regen.sh from
+# /etc/caddy/Caddyfile.mesh.template. Editing this file by hand is futile —
+# it gets overwritten on every regen. To change LB behavior, edit
+# Caddyfile.mesh.template (the real one) and re-run lb/install-lb.sh.
+#
+# Placeholder syntax:
+#   ${VAR}             envsubst fills from environment at regen time
+#   {remote_host}      Caddy fills at request time (DO NOT prefix with $)
+#
+# All required env vars (MESH_LB_*, BACKEND_LIST, BACKEND_LIST_JSON) are
+# always set by install-lb.sh / the regen script, so no defaults needed.
+#
+# Mesh-aware semantics:
+#   - Active probes every 5s; backends that miss 3 checks are removed.
+#   - Round-robin policy; swap to ip_hash for sticky sessions.
+#   - Upstream list rebuilds from mesh-profiles.yaml on every regen.
+#
+# Auth model:
+#   - Clients send Authorization: Bearer ${MESH_LB_TOKEN}
+#   - LB strips that header and forwards WITHOUT auth — each backend
+#     validates against HERMES_API_TOKENS (per-node + mesh-lb tokens).
+#   - Direct admin access bypasses the LB and uses per-node tokens.
+# ============================================================================
+
+{
+    admin ${MESH_LB_ADMIN_ADDR}
+}
+
+:${MESH_LB_PORT} {
+
+    log {
+        output file /var/log/caddy/hermes-mesh.log {
+            roll_size 50MiB
+            roll_keep 5
+        }
+        level INFO
+    }
+
+    handle /health {
+        respond `{"status":"ok","backends":${BACKEND_LIST_JSON}}` 200
+    }
+
+    # Smart-router front (MacBook -> node110 smart-router :4001).
+    # Strips /llm prefix so upstream sees a vanilla OpenAI-style path.
+    # Smart-router listens on loopback only; this is the one auth-walled
+    # route from the client side. Same MESH_LB_TOKEN auth model as the
+    # backend reverse_proxy below.
+    handle /llm/* {
+        reverse_proxy http://127.0.0.1:4001 {
+            header_up -Authorization
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+            header_up X-Mesh-Lb-Node ${MESH_LB_NODE_NAME}
+            transport http {
+                dial_timeout 3s
+                response_header_timeout 30s
+            }
+        }
+        uri strip_prefix /llm
+    }
+
+    reverse_proxy ${BACKEND_LIST} {
+        health_path /health
+        health_interval 5s
+        health_timeout 3s
+        health_status 2xx
+        health_body ""
+
+        lb_policy round_robin
+
+        header_up -Authorization
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+        header_up X-Mesh-Lb-Node ${MESH_LB_NODE_NAME}
+
+        try_duration 5s
+        try_interval 250ms
+
+        flush_interval -1
+
+        transport http {
+            dial_timeout 3s
+            response_header_timeout 30s
+        }
+    }
+}

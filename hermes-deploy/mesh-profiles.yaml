@@ -1,0 +1,101 @@
+# ============================================================================
+# Mesh profile — shared across all nodes via git pull (cron).
+# Place at /etc/hermes/mesh/profiles.yaml (Linux) or ~/.hermes/mesh/ (macOS).
+# Edit on one node, commit, push. Other nodes pick it up within 5 minutes.
+#
+# Per-node tokens are NOT committed to git. They live in:
+#   /etc/hermes/node.token          (Linux server)
+#   /etc/hermes/lb.env              (LB host — has MESH_LB_TOKEN)
+#   ~/.hermes/tokens.env            (MacBook — has MESH_TOKEN_NODE110 etc.)
+#
+# For the MacBook to discover per-node tokens automatically, populate
+# api_token_env per node below — install-macos.sh reads these from the
+# mesh config and writes them into ~/.hermes/tokens.env. Each env var
+# should be set on the MacBook (e.g. in ~/.zshrc) with the actual token.
+# ============================================================================
+version: 2
+mesh:
+  nodes:
+    - name: node110
+      host: 110.x.x.x                          # ← replace with actual IP
+      port: 8642
+      role: full
+      # Env var on the MacBook that holds node110's per-node token.
+      # Set this on the MacBook (e.g. export MESH_TOKEN_NODE110=...) and
+      # install-macos.sh will write it to ~/.hermes/tokens.env.
+      api_token_env: MESH_TOKEN_NODE110
+    - name: node91
+      host: 91.x.x.x
+      port: 8642
+      role: full
+      api_token_env: MESH_TOKEN_NODE91
+    - name: node97
+      host: 97.x.x.x
+      port: 8642
+      role: full
+      api_token_env: MESH_TOKEN_NODE97
+    - name: macbook
+      host: ${MACBOOK_LAN_IP}                 # set per-machine via env, or hardcode
+      port: 8642
+      role: client                            # client = NOT in LB upstream pool
+
+  # Sync strategy: each node pulls profiles.yaml from this repo.
+  # Push your edits to any node; others receive via cron.
+  sync_repo: ${MESH_REPO_URL}
+
+# ============================================================================
+# Mesh Load Balancer
+# ============================================================================
+# One of the full nodes runs the Caddy LB (see lb/install-lb.sh). The LB:
+#   - Listens on ${lb.port} (default 8643)
+#   - Round-robins across full mesh nodes EXCEPT itself
+#   - Active health-checks every 5s, removes dead backends
+#   - Caddyfile regenerated from THIS file by hermes-lb-regen.sh (cron 5min)
+#
+# Clients (MacBook, external monitors) connect to lb.endpoint with the
+# shared MESH_LB_TOKEN. Direct admin access bypasses the LB and uses the
+# per-node token from api_token_env.
+lb:
+  enabled: true
+  # Which node runs the LB. Must match one of the names above.
+  node: node110
+  port: 8643
+  endpoint: ${LB_ENDPOINT:-http://node110.privseai.com:8643}
+  # Env var on clients that holds the shared LB token. Must match
+  # MESH_LB_TOKEN on every backend node (set in /etc/hermes/lb.env by
+  # lb/install-lb.sh and /etc/hermes/node.env by install.sh).
+  token_env: MESH_LB_TOKEN
+  # Caddy admin API endpoint (for live reload + metrics).
+  admin_addr: localhost:2019
+
+llm:
+  # Allrouter is the single LLM ingress. Stainless bypass headers are set
+  # via env vars (HERMES_LLM_USER_AGENT, HERMES_LLM_DEFAULT_HEADERS) so
+  # the OpenAI SDK doesn't get 403'd by api.privseai.com.
+  provider: allrouter
+  base_url_env: ALLROUTER_BASE_URL
+  api_key_env: ALLROUTER_API_KEY
+  default_headers_env: HERMES_LLM_DEFAULT_HEADERS
+  default_user_agent_env: HERMES_LLM_USER_AGENT
+  models:
+    - id: claude-sonnet-4-5
+      alias: primary
+    - id: gpt-4o
+      alias: fallback
+    - id: deepseek-v4-pro
+      alias: budget
+
+mcp_servers: []
+skills: []
+
+# ============================================================================
+# Per-machine overrides live in profiles.local.yaml (gitignored).
+# Use it for: HERMES_NODE_NAME-specific LLM model, custom tools, api_token
+# overrides (e.g. rotating a token without waiting for mesh sync), etc.
+#
+# Example profiles.local.yaml for a developer machine:
+#   mesh:
+#     nodes:
+#       - name: macbook
+#         api_token: "dev-only-macbook-token-rotate-me-monthly"
+# ============================================================================
