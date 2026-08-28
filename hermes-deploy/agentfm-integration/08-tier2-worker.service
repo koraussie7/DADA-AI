@@ -1,0 +1,35 @@
+[Unit]
+Description=agentfm worker (Podman container, Ollama-backed, AgentName=default)
+Documentation=https://github.com/agentfm/agentfm-core
+After=agentfm-relay.service agentfm-api.service ollama.service network-online.target
+Wants=agentfm-relay.service agentfm-api.service network-online.target
+
+[Service]
+Type=simple
+User=agentfm
+Environment=HOME=/var/lib/agentfm
+Environment=XDG_RUNTIME_DIR=/run/user/994
+# --bootstrap is REQUIRED because agentfm 1.3.0 mDNS is disabled
+# (warn: "didn't find any IP addresses") so private mesh peers must be
+# explicit. Loopback relay on the same host.
+# Placeholder is replaced by 07-tier2-prepare.sh via sed:
+#   __BOOTSTRAP__  ->  /ip4/127.0.0.1/tcp/4001/p2p/<relay-peer-id>
+ExecStart=/usr/local/bin/agentfm \
+  -mode worker \
+  -swarmkey /etc/agentfm/swarm.key \
+  -bootstrap __BOOTSTRAP__ \
+  -agentdir /opt/agentfm-worker/agentdir \
+  -image agentfm-ollama-bridge:latest \
+  -agent default \
+  -model qwen2.5:0.5b \
+  -desc "Ollama-backed chat agent (Tier 2 smoke worker on node110)" \
+  -capability chat \
+  -maxtasks 1 \
+  -log-format json \
+  -log-level info
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
