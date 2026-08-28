@@ -2,7 +2,7 @@
 
 ## Goal
 
-smart-router (FastAPI :4001) exhausted every LiteLLM candidate →
+smart-router (FastAPI :4001 on node110, :14001 on node97) exhausted every LiteLLM candidate →
 fall back to keirouter chain:* (:20180) before returning 503.
 keirouter adds 15 pre-configured providers including OAuth (Kiro /
 kilocode / kimi-coding) that allrouter cannot reach.
@@ -11,7 +11,7 @@ kilocode / kimi-coding) that allrouter cannot reach.
 
 ```
 L5  Hermes Mesh-LB          node110 / node91 / node97
-L4  smart-router            FastAPI :4001  ← adds keirouter:chain:* to candidate tail
+L4  smart-router            FastAPI :4001 (node110) / :14001 (node97)  ← adds keirouter:chain:* to candidate tail
 L3a allrouter / LiteLLM     :4003          (current — 243 aliases + groq-* fallbacks)
 L3b keirouter               :20180         (NEW tier — chain:fast-fallback / coding-heavy)
 L2  Providers               Groq, OpenRouter, NVIDIA, TokenRouter, Kiro, Kimi, ...
@@ -89,6 +89,7 @@ two latent bugs prevented admin marks from affecting the chain:
 | `04-patch-router-logic.py` | Patches `router_logic.py` `candidate_models()` to append keirouter virtual model as final candidate | node110 |
 | `05-create-chains.sh` | Creates `coding-heavy` and `fast-fallback` chains via keirouter dashboard (login with password, then POST /api/chains with session cookie) | node110 |
 | `06-smoke-test.sh` | End-to-end verification (7 scenarios A–G) — baseline / keirouter direct / chain / LiteLLM exhaustion via admin marks / admin round-trip / keirouter-down 503 | node110 |
+| `06-smoke-test-node97.sh` | Same as above but with smart-router :14001 and `docker stop keirouter-keirouter-1` for the keirouter-down scenario | node97 |
 | `07-unit-test.py` | Direct unit test of `_post_once()` — extracts the function from app.py, dedents it, writes to temp .py, imports it, calls both branches against real services | node110 |
 | `08-patch-admin-endpoint.py` | Adds `/admin/mark-failing`, `/admin/clear-failing`, `/admin/failing` endpoints to `app.py` | node110 |
 | `09-patch-failing-filter.py` | Patches `router_logic.py` so admin marks actually filter the candidate chain | node110 |
@@ -142,6 +143,85 @@ sudo python3 hermes-deploy/keirouter-integration/07-unit-test.py
 | `08-patch-admin-endpoint.py` | adds `/admin/mark-failing`, `/admin/clear-failing`, `/admin/failing` to `app.py` |
 | `09-patch-failing-filter.py` | fixes three bugs in `router_logic.py` so admin marks actually filter the chain |
 
+## What was applied on node97 (2026-08-26)
+
+| Step | Outcome |
+|------|---------|
+| smart-router port | **14001** (not 4001 — port 4001 on node97 is `ipfs`) |
+| keirouter networking | host networking (port 20180 is the host port; container name `keirouter-keirouter-1`) |
+| keirouter data | fresh initdb — admin password reset to `DADA-Admin-2026` and stored at `/etc/hermes/keirouter-admin.env` (mode 0600, owner root) |
+| Allrouter routing | added custom-openai account `node110-allrouter` (id `514baf5c-...-cf95ae24329c`) pointing at `http://185.55.240.110:4003/v1` |
+| `/etc/hermes/keirouter.env` | written on host (not in container) so smart-router can read it on startup |
+| `02-new-config.json` patches | `port`→`14001`, `keirouter_url`→`http://127.0.0.1:20180`, `keirouter_key` placeholder |
+| chain creation | `coding-heavy` (id `41363313-...-a682f8400cb1`, latency strategy) and `fast-fallback` (id `e30baa2a-...-99d685dca44d`, priority) — both with **bare** model names |
+| `06-smoke-test-node97.sh` | 12/12 assertions pass — all 11 base scenarios + extra "top-level model" check |
+
+### node97 vs node110 ports
+
+```text
+node110:                     node97:
+  smart-router :4001           smart-router :14001  (4001 = ipfs)
+  keirouter    :20180          keirouter    :20180  (host network; same)
+  allrouter    :4003 (local)   allrouter    :4003   (remote, on 185.55.240.110)
+```
+
+### Bare model names (node97 gotcha)
+
+keirouter's custom-openai provider passes the **raw** `model` field as
+the upstream model name. If you put `custom-openai/big-pickle` in
+`steps[].model`, keirouter will pass the literal string
+`custom-openai/big-pickle` to allrouter, which rejects it as
+`Invalid model name`. Use bare names only:
+
+```json
+{"steps":[{"provider":"custom-openai","model":"big-pickle"}]}
+                                   ^^^^^^^^^^^^^^^^^^ no "custom-openai/" prefix
+```
+
+This is opposite to some keirouter docs that recommend the prefixed
+form. The kanban check is: the chain responds with `choices[]` and a
+recognizable `model` field — if you see `400 model_unavailable`, drop
+the prefix.
+
+### Apply order (node97 — fast path)
+
+```bash
+# SSH in (config alias: server97)
+ssh server97
+
+# 1. Save keirouter admin + API keys
+sudo bash hermes-deploy/keirouter-integration/01-save-keirouter-key.sh
+
+# 2. Replace config (smart-router on node97 uses port 14001)
+sudo cp /opt/smart-router/config.json /opt/smart-router/config.json.bak.$(date +%s)
+sudo cp hermes-deploy/keirouter-integration/02-new-config.json /opt/smart-router/config.json
+
+# 3. Apply code patches (smart-router's app.py on node97 must already exist,
+#    patches are anchored on existing functions / lines and are idempotent)
+sudo python3 hermes-deploy/keirouter-integration/03-patch-app.py.py
+sudo python3 hermes-deploy/keirouter-integration/04-patch-router-logic.py
+sudo python3 hermes-deploy/keirouter-integration/08-patch-admin-endpoint.py
+sudo python3 hermes-deploy/keirouter-integration/09-patch-failing-filter.py
+
+# 4. Create keirouter chains (uses password auth at dashboard)
+bash hermes-deploy/keirouter-integration/05-create-chains.sh
+
+# 5. Restart smart-router (node97 systemd unit is `smart-router` and uses --port 14001)
+sudo systemctl restart smart-router
+
+# 6. Run smoke test (node97-specific — port 14001, container name keirouter-keirouter-1)
+sudo bash hermes-deploy/keirouter-integration/06-smoke-test-node97.sh
+```
+
+If smart-router on node97 is launched via `nohup uvicorn` (not systemd),
+target the port explicitly:
+
+```bash
+sudo pkill -9 -f "smart-router/app.py"
+sudo nohup python3 -m uvicorn app:app --app-dir /opt/smart-router \
+  --host 0.0.0.0 --port 14001 > /tmp/smart-router.log 2>&1 & disown
+```
+
 ## Retry keyword expansion
 
 `smart-router/app.py` retry-keyword set was expanded from
@@ -181,3 +261,42 @@ Integration pattern is locked in PLUR engrams:
 - `keirouter-fallback-architecture` — the layered design
 - `keirouter-bootstrap-procedure` — dashboard auth (password only — no username field) + API key creation
 - `smart-router-admin-failing-bugs` — the three `_is_failing` / `_live` / `select_model` bugs that admin mark-failing exposed
+
+## Migrated agents on node110 (2026-08-27)
+
+Every live LLM-using agent on node110 now routes through smart-router
+on `:4001`. Pre-migration each agent pointed at a different dedicated
+endpoint (`cliproxy:8643`, `openclaw-gateway:18790`, raw LiteLLM, etc.).
+After migration they all converge on the same Tier 1 (smart-router)
+endpoint with the keirouter chain as a transparent fallback tier.
+
+| Agent / pid | Endpoint (was) | Endpoint (now) | Config file | Backup |
+|-------------|----------------|----------------|-------------|--------|
+| `hermes-agent` (pid 3481657, uvicorn :8001) | standalone provider call | `http://127.0.0.1:4001/v1` | `/root/dada-hermes-agent/server/.env` | `.bak-1787772164` |
+| `superdadaya-bot` (pid 3481655, hermes bot process) | shares hermes-agent env | `http://127.0.0.1:4001/v1` | (same `.env`) | (same) |
+| `tradingagent-backend` (pid 3481659, :8000) | `CLIPROXY_BASE_URL=http://127.0.0.1:8643/v1` | `CLIPROXY_BASE_URL=http://127.0.0.1:4001/v1` | `/root/TradingAgent-VN/.env` | `.bak-1787772251` |
+| `uae-telegram-bot` (pid 1439061) | `OPENCODE_URL=http://localhost:8643` | `OPENCODE_URL=http://127.0.0.1:4001/v1` (Tier 3 opencode) | `/root/dada-super-agent/apps/telegram-bot/.env` | `.bak-1787772251` |
+| `uae` server (pid 1439113, :1818) | 9router/omniroute subprocesses | unchanged — relies on Hermes Tier 1 (also migrated) + opencode Tier 3 (also migrated) | (no top-level .env exists) | n/a |
+
+### Verification (live, 2026-08-27)
+
+| Tier | Endpoint | HTTP | Routed model | Notes |
+|------|----------|------|--------------|-------|
+| Hermes :8001/ai/chat | `groq-qwen3.6-27b` → 200 | ✓ | Hermes itself sits behind smart-router :4001, so an `/ai/chat` call lands on groq-qwen3.6-27b |
+| Smart-router :4001/v1 | `tokenrouter-nemotron-3-super` (DeepInfra) | ✓ | Returns `Pong!`. This is what all 4 migrated agents now hit. |
+| omniroute :20128 | 401 — needs its own provider auth | n/a | Independent router. uae-bot falls past it to Tier 3 in production. |
+| keirouter :20180/v1 chain:fast-fallback | (long-tail, parallel provider) | ✓ | Previously verified 11/11 via `06-smoke-test.sh` scenario E (admin mark-failing drives the chain). |
+
+### Why migration was safe
+
+- smart-router's `_post_once()` already preserves every model name
+  (e.g. `deepseek-v4-pro`, `big-pickle`) — agents keep their existing
+  business-logic model strings, only the base URL changes.
+- smart-router transparently chains LiteLLM and `keirouter:chain:*`
+  virtual models, so keirouter's 15 OAuth-bearing providers
+  (kilocode, Kiro, kimi-coding) become available to every agent that
+  previously only saw the 7 LiteLLM candidates.
+- Endpoint security: smart-router listens on `127.0.0.1:4001` (loopback
+  only — same trust boundary as the prior `127.0.0.1:8643` cliproxy).
+- All four .env files backed up with `.bak-<unix-ts>` suffix before
+  edit; rollback = restore the backup and `pm2 restart <name>`.
