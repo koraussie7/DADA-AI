@@ -1,0 +1,8 @@
+{
+  "_comment": "Merged into /opt/smart-router/config.json via: jq -s '. [0] += . [1]' config.json /tmp/02-config-snippet.json | sponge > config.json",
+  "agentfm_url": "http://127.0.0.1:8080",
+  "agentfm_key": "",
+  "agentfm_enabled": true,
+  "agentfm_chain_simple": "default",
+  "agentfm_chain_complex": "coder"
+}
