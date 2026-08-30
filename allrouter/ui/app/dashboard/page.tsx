@@ -42,20 +42,43 @@ export default function DashboardPage() {
   const [logs, setLogs] = useState<SpendLog[]>([]);
   const [globalSpend, setGlobalSpend] = useState<{ spend?: number; max_budget?: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   useEffect(() => {
-    (async () => {
+    let active = true;
+
+    const load = async () => {
       try {
         const [logsData, spendData] = await Promise.all([
           llmFetch("spend/logs?limit=1000"),
           llmFetch("global/spend"),
         ]);
+        if (!active) return;
         setLogs(Array.isArray(logsData) ? logsData : []);
         setGlobalSpend(spendData);
+        setError(null);
+        setLastUpdated(new Date());
       } catch (e) {
+        if (!active) return;
         setError(e instanceof Error ? e.message : "데이터를 불러오지 못했습니다.");
       }
-    })();
+    };
+
+    load();
+    const timer = setInterval(load, 30000);
+
+    const onFocus = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+
+    return () => {
+      active = false;
+      clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
   }, []);
 
   const recentLogs = logs.slice(0, 6);
@@ -154,6 +177,11 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-bold tracking-tight">대시보드</h1>
           <p className="mt-1 text-sm text-[var(--muted)]">
             AI 게이트웨이 실시간 모니터링
+            {lastUpdated && (
+              <span className="ml-2 text-xs text-[var(--border-light)]">
+                · 마지막 갱신 {lastUpdated.toLocaleTimeString("ko-KR", { hour12: false })}
+              </span>
+            )}
           </p>
         </div>
         <button

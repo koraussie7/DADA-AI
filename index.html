@@ -1,0 +1,2232 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>🎴 온라인 고스톱</title>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+:root {
+  --felt: #1a5c2a;
+  --felt-dark: #123d1c;
+  --gold: #f0c040;
+  --card-w: 52px;
+  --card-h: 78px;
+}
+
+body {
+  font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+  background: var(--felt-dark);
+  color: #eee;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  touch-action: manipulation;
+}
+
+.screen { display: none; width: 100%; height: 100%; }
+.screen.active { display: flex; }
+
+/* ── LOBBY ── */
+#s-lobby {
+  align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at center,#1e6b32 0%,#0d3018 100%);
+  flex-direction: column; gap: 16px; padding: 24px 20px;
+  overflow-y: auto;
+}
+.lobby-header { text-align: center; }
+.lobby-emoji { font-size: 3.5rem; line-height: 1; }
+.lobby-title-text { font-size: 1.8rem; color: var(--gold); font-weight: bold; margin-top: 6px; }
+.lobby-sub { font-size: .85rem; color: #888; margin-top: 4px; }
+.lobby-box {
+  background: rgba(0,0,0,.5); border: 2px solid #4a8a4a;
+  border-radius: 16px; padding: 24px 20px;
+  width: 100%; max-width: 400px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.lobby-box label { font-size: .85rem; color: #aaa; }
+.lobby-box input {
+  padding: 14px 16px; border-radius: 10px; border: 1px solid #4a8a4a;
+  background: #0a2010; color: #eee; font-size: 1rem; width: 100%;
+}
+.score-row { display: flex; gap: 8px; align-items: center; }
+.score-row input { flex: 1; }
+.score-row span { color: #aaa; font-size: .9rem; white-space: nowrap; }
+.btn {
+  padding: 14px; border: none; border-radius: 10px; cursor: pointer;
+  font-size: 1rem; font-weight: bold; width: 100%; min-height: 50px;
+  transition: opacity .1s;
+}
+.btn:active { opacity: .75; }
+.btn-primary   { background: #2a7a40; color: #fff; }
+.btn-secondary { background: #1a4a80; color: #fff; }
+.btn-danger    { background: #6a1a1a; color: #fff; }
+.divider { border: none; border-top: 1px solid #3a6a3a; margin: 2px 0; }
+.err-msg { color: #f06060; font-size: .85rem; text-align: center; min-height: 1.2rem; }
+
+/* ── ROOM ── */
+#s-room {
+  align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at center,#1e6b32 0%,#0d3018 100%);
+  flex-direction: column; gap: 20px; padding: 24px 20px;
+  overflow-y: auto;
+}
+.room-box {
+  background: rgba(0,0,0,.5); border: 2px solid #4a8a4a;
+  border-radius: 16px; padding: 24px 20px;
+  width: 100%; max-width: 400px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.room-code { font-size: 2.5rem; font-weight: bold; text-align: center; color: var(--gold); letter-spacing: 10px; }
+.player-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.player-list li {
+  background: rgba(255,255,255,.07); padding: 12px 14px; border-radius: 10px;
+  display: flex; align-items: center; gap: 10px; font-size: .95rem;
+}
+.player-dot { width: 10px; height: 10px; background: #4a8; border-radius: 50%; flex-shrink: 0; }
+
+/* ── FIRST DRAW ── */
+#s-firstdraw {
+  flex-direction: column;
+  background: radial-gradient(ellipse at center,#1e3b6b 0%,#0d1830 100%);
+  height: 100vh; height: 100dvh; overflow: hidden;
+}
+.fd-header {
+  background: rgba(0,0,0,.5); padding: 14px 16px; text-align: center;
+  border-bottom: 1px solid #2a3a6a; flex-shrink: 0;
+}
+.fd-title { font-size: 1.3rem; font-weight: bold; color: var(--gold); }
+.fd-sub   { font-size: .78rem; color: #9ab; margin-top: 3px; }
+.fd-status { font-size: .82rem; color: #ccc; margin-top: 6px; }
+
+.fd-picks-row {
+  display: flex; gap: 10px; padding: 10px 14px;
+  overflow-x: auto; flex-shrink: 0;
+  scrollbar-width: none; border-bottom: 1px solid #2a3a6a;
+  background: rgba(0,0,0,.3); min-height: 96px; align-items: center;
+}
+.fd-picks-row::-webkit-scrollbar { display: none; }
+.fd-pick-slot {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 4px; flex-shrink: 0; min-width: 60px;
+}
+.fd-pick-name  { font-size: .62rem; color: #aaa; text-align: center; max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fd-pick-card  { width: 40px; height: 60px; border-radius: 5px; border: 1px solid #555; display: flex; align-items: center; justify-content: center; }
+.fd-pick-card.waiting { background: rgba(255,255,255,.08); }
+.fd-pick-card.done    { background: none; }
+.fd-pick-month { font-size: .62rem; color: var(--gold); }
+
+.fd-cards-wrap {
+  flex: 1; overflow-y: auto; padding: 10px 10px 16px;
+}
+.fd-cards {
+  display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
+}
+.card-back {
+  width: var(--card-w); height: var(--card-h);
+  background: linear-gradient(145deg,#1a1a6a,#2a2aaa);
+  border: 2px solid #4a4aaa; border-radius: 6px;
+  cursor: pointer; transition: transform .12s, box-shadow .12s, opacity .2s;
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 1.5rem; position: relative; overflow: hidden;
+}
+.card-back:active { opacity: .7; transform: scale(.95); }
+.card-back.mine-picked {
+  opacity: .45; pointer-events: none;
+  box-shadow: 0 0 0 3px var(--gold);
+}
+.card-back.other-picked {
+  opacity: .25; pointer-events: none;
+}
+.card-back .card-img {
+  width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0;
+  border-radius: 4px;
+}
+
+/* ── GAME ── */
+#s-game {
+  flex-direction: column; background: var(--felt);
+  height: 100vh; height: 100dvh; overflow: hidden;
+}
+
+/* Status bar */
+.status-bar {
+  background: rgba(0,0,0,.6); padding: 6px 12px; font-size: .78rem;
+  display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px solid #2a5a2a; flex-shrink: 0;
+}
+.status-turn  { color: var(--gold); font-weight: bold; white-space: nowrap; }
+.status-phase { color: #a0d0a0; flex: 1; font-size: .72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deck-info    { color: #888; font-size: .72rem; white-space: nowrap; }
+
+/* Opponents */
+.opponents-row {
+  display: flex; flex-wrap: wrap; gap: 4px; padding: 5px 6px;
+  flex-shrink: 0;
+  background: rgba(0,0,0,.25); border-bottom: 1px solid #1a4a1a;
+}
+.opponent-panel {
+  background: rgba(0,0,0,.35); border: 1px solid #2a6a2a;
+  border-radius: 8px; padding: 5px 7px;
+  flex: 1; min-width: 46%;   /* 2-per-row for 3/4-player, full-width for 2-player */
+}
+.opp-name { font-weight: bold; font-size: .76rem; margin-bottom: 3px; display: flex; align-items: center; gap: 4px; }
+.turn-ind { width: 7px; height: 7px; background: var(--gold); border-radius: 50%; animation: pulse 1s infinite; display: none; flex-shrink: 0; }
+.turn-ind.on { display: block; }
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:.3} }
+@keyframes dealIn {
+  0%   { transform: perspective(500px) rotateY(90deg) scale(0.85); opacity: 0; }
+  45%  { transform: perspective(500px) rotateY(-9deg) scale(1.05); opacity: 1; }
+  72%  { transform: perspective(500px) rotateY(4deg)  scale(1.01); }
+  100% { transform: perspective(500px) rotateY(0deg)  scale(1);    opacity: 1; }
+}
+.card.deal-in { animation: dealIn 0.7s ease-out forwards; }
+.card-stack {
+  position: relative; flex-shrink: 0;
+  width: calc(var(--card-w) + 14px);
+  height: calc(var(--card-h) + 14px);
+}
+.opp-captured {
+  display: flex; flex-direction: column; gap: 2px; margin-top: 3px;
+}
+.opp-type-row {
+  display: flex; flex-wrap: wrap; gap: 2px; align-items: center;
+}
+.opp-cap-card {
+  width: 26px; height: 38px; flex-shrink: 0;
+  background-size: 100% 100%; background-color: #fff;
+  border-radius: 2px; border: 1px solid rgba(255,255,255,.25);
+}
+.opp-score { font-size: .67rem; color: #9a9; margin-top: 2px; }
+.opp-chips { font-size: .65rem; color: var(--gold); margin-top: 1px; }
+
+/* Field area */
+.field-section {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  gap: 8px; padding: 6px 8px; overflow: hidden; min-height: 0;
+  position: relative;
+}
+.field-cards {
+  display: flex; flex-wrap: wrap; gap: 4px; justify-content: center;
+  align-content: center; flex: 1;
+  max-width: calc(100% - 68px); max-height: 100%;
+}
+.deck-area { display: flex; flex-direction: column; align-items: center; gap: 3px; flex-shrink: 0; }
+.deck-pile {
+  width: var(--card-w); height: var(--card-h);
+  background: linear-gradient(145deg,#1a1a6a,#2a2aaa); border: 2px solid #4a4aaa;
+  border-radius: 8px; display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 2px;
+}
+.deck-count-lbl { font-size: .62rem; color: var(--gold); font-weight: bold; }
+
+/* My info bar */
+.my-info-bar {
+  background: rgba(0,0,0,.4); border-top: 1px solid #2a4a2a;
+  padding: 5px 10px; flex-shrink: 0;
+}
+.score-compact {
+  font-size: .74rem; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+}
+.score-compact .sc-total { color: var(--gold); font-weight: bold; font-size: .82rem; }
+.score-compact .sc-chips { color: #f0c040; font-size: .76rem; }
+.score-compact .sc-item  { color: #bbb; }
+.score-compact .sc-item span { color: var(--gold); font-weight: bold; }
+.captured-toggle { font-size: .68rem; color: #7a9; cursor: pointer; margin-top: 3px; display: inline-block; padding: 2px 0; }
+.captured-area { display: none; flex-wrap: wrap; gap: 2px; margin-top: 4px; max-height: 56px; overflow-y: auto; align-items: flex-end; }
+.captured-area.open { display: flex; }
+.captured-area .card { width: 28px; height: 42px; }
+.cap-type-label {
+  font-size: .52rem; color: #8bc; background: rgba(255,255,255,.1);
+  border-radius: 3px; padding: 1px 3px; align-self: flex-end;
+  margin: 0 1px 1px 5px; white-space: nowrap; flex-shrink: 0;
+}
+.cap-type-label:first-child { margin-left: 0; }
+.opp-cap-label {
+  font-size: .52rem; color: #8bc; white-space: nowrap;
+  flex-shrink: 0; min-width: 14px; align-self: center; text-align: right;
+}
+
+/* My hand */
+.my-hand-section {
+  background: rgba(0,0,0,.45); border-top: 1px solid #2a4a2a;
+  padding: 6px 8px 8px; flex-shrink: 0;
+}
+.hand-label { font-size: .68rem; color: #7a9; margin-bottom: 5px; }
+.my-hand {
+  display: flex; gap: 5px;
+  overflow-x: auto; padding-bottom: 2px;
+  scrollbar-width: none;
+}
+.my-hand::-webkit-scrollbar { display: none; }
+
+/* ── CARDS ── */
+.card {
+  width: var(--card-w); height: var(--card-h);
+  border-radius: 6px; border: 2px solid rgba(255,255,255,.2);
+  cursor: pointer; transition: transform .12s, box-shadow .12s;
+  user-select: none; position: relative; flex-shrink: 0;
+  overflow: hidden; background-color: #fff;
+}
+.card:active { opacity: .82; }
+.card.selected { transform: translateY(-10px); box-shadow: 0 0 0 3px var(--gold), 0 8px 20px rgba(0,0,0,.6); }
+.card.highlight { box-shadow: 0 0 0 3px #60e060 !important; transform: translateY(-5px); }
+.card.dim { opacity: .3; pointer-events: none; }
+.double-badge {
+  position: absolute; top: 2px; right: 2px;
+  background: #f03333; color: #fff; font-size: .45rem;
+  padding: 1px 3px; border-radius: 2px; font-weight: bold;
+}
+
+/* ── OVERLAYS ── */
+.overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.82);
+  display: none; align-items: center; justify-content: center;
+  z-index: 100; flex-direction: column; gap: 16px; padding: 20px;
+}
+.overlay.active { display: flex; }
+.overlay-box {
+  background: rgba(8,25,8,.97); border: 2px solid var(--gold);
+  border-radius: 18px; padding: 28px 24px; text-align: center;
+  display: flex; flex-direction: column; gap: 14px;
+  width: 100%; max-width: 360px;
+}
+.overlay-title { font-size: 1.4rem; font-weight: bold; color: var(--gold); }
+.overlay-sub   { color: #ccc; font-size: .95rem; }
+.btn-group { display: flex; gap: 10px; }
+.btn-jjot  { flex:1; background:#906030; color:#fff; font-size:1rem; padding:14px; border-radius:12px; border:none; font-weight:bold; min-height:48px; cursor:pointer; display:none; }
+.btn-jjot:active { opacity:.8; }
+.btn-shake { flex:1; background:#308060; color:#fff; font-size:1rem; padding:14px; border-radius:12px; border:none; font-weight:bold; min-height:48px; cursor:pointer; display:none; }
+.btn-shake:active { opacity:.8; }
+
+.btn-go   { flex: 1; background: #b83018; color: #fff; font-size: 1.1rem; padding: 16px; border-radius: 12px; border: none; font-weight: bold; min-height: 56px; cursor: pointer; }
+.btn-stop { flex: 1; background: #183878; color: #fff; font-size: 1.1rem; padding: 16px; border-radius: 12px; border: none; font-weight: bold; min-height: 56px; cursor: pointer; }
+.btn-go:active   { opacity: .8; }
+.btn-stop:active { opacity: .8; }
+
+/* ── GAME OVER ── */
+#s-gameover {
+  align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at center,#1e6b32,#0d3018);
+  flex-direction: column; gap: 16px; padding: 20px;
+  overflow-y: auto;
+}
+.gameover-box {
+  background: rgba(0,0,0,.65); border: 2px solid var(--gold);
+  border-radius: 18px; padding: 24px 20px;
+  width: 100%; max-width: 420px;
+}
+.gameover-title { font-size: 1.3rem; color: var(--gold); text-align: center; margin-bottom: 10px; font-weight: bold; }
+.gameover-section-title {
+  font-size: .82rem; color: #9ab; text-align: center;
+  margin: 14px 0 6px; padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,.1);
+}
+.result-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.1); gap: 8px;
+}
+.result-row.winner { color: var(--gold); font-weight: bold; }
+.chips-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.08); gap: 8px;
+}
+.chips-row.eliminated { color: #f06060; }
+.delta-plus  { color: #6f6; font-size: .78rem; }
+.delta-minus { color: #f88; font-size: .78rem; }
+
+/* ── FIRST DRAW RESULT OVERLAY ── */
+#ov-firstdraw-result .overlay-box {
+  border-color: #6ab;
+  background: rgba(8,18,30,.97);
+}
+#ov-firstdraw-result .overlay-title { color: #6be; }
+.fd-result-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.1); gap: 8px;
+  font-size: .9rem;
+}
+.fd-result-row.first-player { color: var(--gold); font-weight: bold; }
+.fd-result-winner-msg {
+  color: var(--gold); font-size: 1rem; font-weight: bold; margin-top: 4px;
+}
+
+/* ── CHAT FAB ── */
+.chat-fab {
+  position: fixed; right: 14px; bottom: 14px;
+  width: 50px; height: 50px; border-radius: 50%;
+  background: #2a6030; border: 2px solid #4a8a4a;
+  font-size: 1.3rem; cursor: pointer;
+  display: none; align-items: center; justify-content: center;
+  z-index: 50; box-shadow: 0 3px 10px rgba(0,0,0,.5);
+}
+.chat-fab.visible { display: flex; }
+.chat-fab:active { opacity: .8; }
+.chat-badge {
+  position: absolute; top: -2px; right: -2px; width: 16px; height: 16px;
+  background: #e03030; border-radius: 50%; font-size: .55rem; color: #fff;
+  display: none; align-items: center; justify-content: center;
+}
+.chat-badge.show { display: flex; }
+
+/* ── CHAT SHEET ── */
+.chat-sheet {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: rgba(5,18,5,.97); border-top: 2px solid #2a5a2a;
+  border-radius: 16px 16px 0 0; z-index: 60;
+  flex-direction: column; max-height: 55vh;
+  display: flex; transform: translateY(100%);
+  transition: transform .25s cubic-bezier(.4,0,.2,1);
+}
+.chat-sheet.open { transform: translateY(0); }
+.chat-sheet-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 16px; border-bottom: 1px solid #2a4a2a; flex-shrink: 0;
+}
+.chat-sheet-title { font-weight: bold; color: var(--gold); font-size: .9rem; }
+.chat-close { background: none; border: none; color: #999; font-size: 1.2rem; cursor: pointer; padding: 4px 8px; }
+.chat-messages {
+  flex: 1; overflow-y: auto; padding: 8px 14px;
+  font-size: .8rem; display: flex; flex-direction: column; gap: 4px;
+}
+.chat-msg { line-height: 1.4; word-break: break-all; }
+.chat-msg .cn { color: var(--gold); font-weight: bold; }
+.chat-msg.sys { color: #90b890; font-style: italic; }
+.chat-input-row {
+  display: flex; gap: 6px; padding: 8px 12px;
+  border-top: 1px solid #2a4a2a; flex-shrink: 0;
+}
+.chat-input {
+  flex: 1; background: rgba(255,255,255,.1); border: 1px solid #3a6a3a;
+  border-radius: 8px; color: #eee; padding: 10px 12px; font-size: .9rem;
+}
+.btn-chat {
+  background: #2a6030; color: #fff; border: none; border-radius: 8px;
+  padding: 10px 16px; font-size: .9rem; font-weight: bold; cursor: pointer;
+}
+.btn-chat:active { opacity: .8; }
+
+/* ── ROOM LIST ── */
+.room-list-box {
+  background: rgba(0,0,0,.45); border: 2px solid #3a6a5a;
+  border-radius: 16px; padding: 16px 18px;
+  width: 100%; max-width: 400px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.room-list-title { font-size: .85rem; color: #9ab; }
+.room-list-item {
+  background: rgba(255,255,255,.06); border: 1px solid #3a6a4a;
+  border-radius: 10px; padding: 10px 14px;
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+}
+.room-list-code  { font-size: 1.15rem; font-weight: bold; color: var(--gold); letter-spacing: 4px; }
+.room-list-info  { font-size: .72rem; color: #999; margin-top: 2px; }
+.btn-join-room {
+  background: #1a5a70; color: #fff; border: none; border-radius: 8px;
+  padding: 8px 14px; font-size: .85rem; font-weight: bold; cursor: pointer;
+  flex-shrink: 0; min-height: 38px;
+}
+.btn-join-room:active { opacity: .8; }
+.room-list-empty { font-size: .78rem; color: #555; text-align: center; padding: 8px 0; }
+
+/* ── HEUNDEUL ── */
+.card.heundeul-card { box-shadow: 0 0 0 2px #7af, 0 0 10px rgba(100,160,255,.45) !important; }
+/* 내 차례에 바닥 패와 월이 같은 손패 강조 */
+.card.can-match:not(.selected) {
+  border-color: rgba(80,210,80,.8);
+  box-shadow: 0 0 0 2px rgba(80,210,80,.65), 0 0 10px rgba(80,210,80,.25);
+}
+
+/* ── TOAST ── */
+#toast-container {
+  position: fixed; top: 56px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: 6px; z-index: 300;
+  pointer-events: none; align-items: center;
+}
+.toast {
+  background: rgba(15,35,15,.96); border: 1px solid #5a9a5a;
+  border-radius: 10px; padding: 9px 20px;
+  color: #eee; font-size: .88rem; text-align: center;
+  box-shadow: 0 4px 18px rgba(0,0,0,.55); white-space: nowrap;
+  animation: toastIn 0.28s ease-out;
+}
+@keyframes toastIn  { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }
+@keyframes toastOut { from { opacity:1; } to { opacity:0; transform:translateY(-6px); } }
+
+/* ── 낸 패 바닥 겹침 애니메이션 레이어 ── */
+#fp-anim-layer {
+  position: fixed; inset: 0;
+  pointer-events: none;
+  z-index: 55;
+  overflow: hidden;
+}
+.fp-float-card {
+  position: fixed;
+  background-size: 100% 100%;
+  background-color: #fff;
+  border-radius: 6px;
+  border: 2px solid var(--gold);
+  box-shadow: 0 0 0 2px rgba(240,192,64,.55), 0 6px 24px rgba(0,0,0,.72);
+  pointer-events: none;
+}
+
+/* 내 미스 패 글로우 */
+@keyframes missGlow {
+  0%   { box-shadow: 0 0 0 3px var(--gold), 0 0 14px rgba(240,192,64,.7); }
+  80%  { box-shadow: 0 0 0 2px rgba(240,192,64,.3), 0 0 5px rgba(240,192,64,.15); }
+  100% { box-shadow: none; }
+}
+.card.miss-glow { animation: missGlow 2.8s ease-out forwards; }
+
+/* ── RESULT CAPTURED CARDS ── */
+.result-cap-player {
+  border-top: 1px solid rgba(255,255,255,.08);
+  padding: 7px 0 5px;
+}
+.result-cap-name  { font-size: .76rem; font-weight: bold; color: #ddd; margin-bottom: 4px; }
+.result-cap-name.is-winner { color: var(--gold); }
+.result-cap-row   { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; margin-bottom: 3px; }
+.result-cap-label { font-size: .52rem; color: #8bc; min-width: 18px; flex-shrink: 0; text-align: right; }
+.result-cap-card  {
+  width: 26px; height: 38px; flex-shrink: 0;
+  background-size: 100% 100%; background-color: #fff;
+  border-radius: 2px; border: 1px solid rgba(255,255,255,.25);
+  position: relative;
+}
+.result-cap-badge {
+  position: absolute; top: 1px; right: 1px;
+  background: #f03; color: #fff; font-size: .38rem;
+  padding: 1px 2px; border-radius: 2px; font-weight: bold; line-height: 1;
+}
+.result-breakdown { font-size: .68rem; color: #9ab; margin-top: 3px; }
+
+/* ── AUTH SCREENS ── */
+#s-login {
+  align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at center,#1e6b32 0%,#0d3018 100%);
+  flex-direction: column; gap: 16px; padding: 24px 20px;
+  overflow-y: auto;
+}
+#auth-err { margin-top: 8px; min-height: 1.2rem; font-size: .85rem; text-align: center; }
+#auth-err.success { color: #4caf50; }
+#login-form a, #register-form a { text-decoration: none; }
+
+</style>
+</head>
+<body>
+
+<!-- ══ LOBBY ══ -->
+<!-- ══ SPLASH / LOGIN ══ -->
+<div id="s-login" class="screen active">
+  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;width:100%;padding:24px 20px;background:radial-gradient(ellipse at center,#1e6b32 0%,#0d3018 100%)">
+    <div style="background:rgba(0,0,0,.5);border:2px solid #4a8a4a;border-radius:16px;padding:24px 20px;width:100%;max-width:400px;display:flex;flex-direction:column;gap:12px">
+      <div style="text-align:center;font-size:2.5rem;margin-bottom:4px">🎴</div>
+      <div style="text-align:center;font-size:1.2rem;font-weight:bold;margin-bottom:16px;color:var(--gold)">온라인 고스톱</div>
+
+      <!-- Login Form -->
+      <div id="login-form">
+        <label style="font-size:.85rem;color:#aaa">아이디</label>
+        <input id="login-username" placeholder="아이디 입력" maxlength="20" autocomplete="username" style="padding:14px 16px;border-radius:10px;border:1px solid #4a8a4a;background:#0a2010;color:#eee;font-size:1rem;width:100%;margin-bottom:12px">
+        <label style="font-size:.85rem;color:#aaa">비밀번호</label>
+        <input id="login-password" type="password" placeholder="비밀번호 입력" autocomplete="current-password" style="padding:14px 16px;border-radius:10px;border:1px solid #4a8a4a;background:#0a2010;color:#eee;font-size:1rem;width:100%;margin-bottom:4px">
+        <button class="btn btn-primary" onclick="doLogin()" style="width:100%;margin-top:4px">로그인</button>
+        <button class="btn btn-secondary" onclick="guestLogin()" style="width:100%;margin-top:8px;background:#2a6a3a;border:1px solid #4a8a4a;color:#ccc">게스트로 입장 🎮</button>
+        <div style="text-align:center;margin-top:10px;font-size:.85rem">
+          계정이 없으신가요? <a href="#" onclick="showRegister()" style="color:var(--gold)">회원가입</a>
+        </div>
+      </div>
+
+      <!-- Register Form (hidden) -->
+      <div id="register-form" style="display:none">
+        <label style="font-size:.85rem;color:#aaa">아이디</label>
+        <input id="reg-username" placeholder="아이디 (2~20자)" maxlength="20" autocomplete="off" style="padding:14px 16px;border-radius:10px;border:1px solid #4a8a4a;background:#0a2010;color:#eee;font-size:1rem;width:100%;margin-bottom:12px">
+        <label style="font-size:.85rem;color:#aaa">비밀번호</label>
+        <input id="reg-password" type="password" placeholder="비밀번호 (4자 이상)" autocomplete="new-password" style="padding:14px 16px;border-radius:10px;border:1px solid #4a8a4a;background:#0a2010;color:#eee;font-size:1rem;width:100%;margin-bottom:12px">
+        <label style="font-size:.85rem;color:#aaa">비밀번호 확인</label>
+        <input id="reg-password2" type="password" placeholder="비밀번호 다시 입력" autocomplete="new-password" style="padding:14px 16px;border-radius:10px;border:1px solid #4a8a4a;background:#0a2010;color:#eee;font-size:1rem;width:100%;margin-bottom:4px">
+        <div style="font-size:.8rem;color:#aac;margin:6px 0">
+          ✅ 신규 가입 시 <b style="color:var(--gold)">1,000만원</b> 시드머니 지급!
+        </div>
+        <button class="btn btn-primary" onclick="doRegister()" style="width:100%;margin-top:4px">회원가입</button>
+        <div style="text-align:center;margin-top:10px;font-size:.85rem">
+          이미 계정이 있으신가요? <a href="#" onclick="showLogin()" style="color:var(--gold)">로그인</a>
+        </div>
+      </div>
+
+      <div class="err-msg" id="auth-err"></div>
+    </div>
+  </div>
+</div>
+
+<div id="s-lobby" class="screen">
+  <div class="lobby-header">
+    <div class="lobby-emoji">🎴</div>
+    <div class="lobby-title-text">온라인 고스톱</div>
+    <div class="lobby-sub">2~4인 멀티플레이어</div>
+
+  <div style="width:100%;max-width:400px">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;width:100%">
+      <span style="font-size:.85rem;color:#aaa">👤 <span id="lobby-username">-</span></span>
+      <span style="font-size:.85rem;color:var(--gold)">💰 <span id="lobby-money">-</span></span>
+      <span style="font-size:.78rem;color:#888;cursor:pointer" onclick="doLogout()">로그아웃</span>
+    </div>
+  </div>
+
+  </div>
+  <div class="lobby-box">
+    <label>닉네임</label>
+    <input id="inp-name" placeholder="이름을 입력하세요" maxlength="10">
+    <label>시드머니 <span style="font-size:.75rem;color:#666">(방 만들기 시 설정)</span></label>
+    <div class="score-row">
+      <input id="inp-seed" type="number" value="5000" min="100" step="100" inputmode="numeric">
+    </div>    <div class="score-row" style="margin-top:6px">      <input id="inp-entryfee" type="number" value="0" min="0" max="1000000" step="1000" inputmode="numeric" style="width:80px">      <span>입장료 (0=무료)</span>    </div>    <div class="score-row" style="margin-top:6px">      <select id="inp-mode" style="flex:1;padding:6px 10px;border-radius:8px;border:1px solid #444;background:#2a2a2a;color:#fff">        <option value="gostop">🃏 고스톱</option>        <option value="matgo">🎯 맞고</option>      </select>      <span>모드</span>
+      <span>원</span>
+    </div>
+    <button class="btn btn-primary" onclick="createRoom()">방 만들기</button>
+    <hr class="divider">
+    <label>방 코드 (4자리 숫자)</label>
+    <input id="inp-room" placeholder="예: 1234" maxlength="4" inputmode="numeric" pattern="[0-9]*">
+    <button class="btn btn-secondary" onclick="joinRoom()">방 참가</button>
+    <div class="err-msg" id="lobby-err"></div>
+  </div>
+
+  <!-- 대기 중인 방 목록 -->
+  <div class="room-list-box" id="room-list-box" style="display:none">
+    <div class="room-list-title">🚪 대기 중인 방</div>
+    <div id="room-list-el">
+      <div class="room-list-empty">대기 중인 방이 없습니다</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ ROOM ══ -->
+<div id="s-room" class="screen">
+  <div class="room-box">
+    <div style="text-align:center;font-size:.85rem;color:#aaa">방 코드</div>
+    <div class="room-code" id="room-code-display">────</div>
+    <div style="text-align:center;font-size:.8rem;color:#888">이 코드를 친구에게 알려주세요</div>
+    <div style="text-align:center;font-size:.8rem;color:var(--gold)">시드머니: <span id="room-seed-money">-</span>원</div>
+    <div id="mode-display" style="text-align:center;font-size:.85rem;color:var(--gold);margin-top:2px">    🎮 <span id="room-mode-label">고스톱</span>  </div>  <div id="entry-fee-display" style="text-align:center;font-size:.8rem;color:var(--gold);display:none">
+      💰 입장료: <span id="room-entry-fee">0</span>원 · 상금 풀: <span id="room-prize-pool">0</span>원
+    </div>
+    <hr class="divider">
+    <div style="font-size:.85rem;color:#aaa">참가자 (<span id="player-count">0</span>/4명)</div>
+    <ul class="player-list" id="player-list"></ul>
+    <button class="btn btn-primary" id="btn-start" onclick="startGame()" style="display:none">게임 시작 ▶</button>
+    <div class="err-msg" id="room-err"></div>
+    <div style="text-align:center;color:#888;font-size:.8rem" id="waiting-msg">방장이 게임을 시작할 때까지 기다려주세요...</div>
+  </div>
+</div>
+
+<!-- ══ FIRST DRAW ══ -->
+<div id="s-firstdraw" class="screen">
+  <div class="fd-header">
+    <div class="fd-title">🎴 선(先) 결정</div>
+    <div class="fd-sub">높은 월(月)을 뽑은 사람이 먼저 시작합니다</div>
+    <div class="fd-status" id="fd-status">카드를 한 장 선택하세요</div>
+  </div>
+  <div class="fd-picks-row" id="fd-picks-row"></div>
+  <div class="fd-cards-wrap">
+    <div class="fd-cards" id="fd-cards"></div>
+  </div>
+</div>
+
+<!-- ══ GAME ══ -->
+<div id="s-game" class="screen">
+  <div class="status-bar">
+    <span class="status-turn" id="status-turn"></span>
+    <span class="status-phase" id="status-phase"></span>
+    <span class="deck-info">덱 <span id="deck-count">0</span>장</span>
+  </div>
+  <div class="opponents-row" id="opponents-row"></div>
+  <div id="fp-anim-layer"></div>
+  <div class="field-section">
+    <div class="field-cards" id="field-cards"></div>
+    <div class="deck-area">
+      <div class="deck-pile">
+        <span style="font-size:1.3rem">🀫</span>
+        <span class="deck-count-lbl" id="deck-count2">0</span>
+      </div>
+      <div style="font-size:.62rem;color:#777;margin-top:1px">덱</div>
+    </div>
+  </div>
+  <div class="my-info-bar">
+    <div class="score-compact" id="my-score-panel">
+      <span class="sc-total">📊 0점</span>
+    </div>
+    <div class="captured-toggle" id="cap-toggle" onclick="toggleCaptured()">획득 카드 접기 ▴</div>
+    <div class="captured-area open" id="my-captured"></div>
+  </div>
+  <div class="my-hand-section">
+    <div class="hand-label">✋ 내 손패 (<span id="my-hand-count">0</span>장)</div>
+    <div class="my-hand" id="my-hand"></div>
+  </div>
+</div>
+
+<!-- ══ GAME OVER ══ -->
+<div id="s-gameover" class="screen">
+  <div class="gameover-box">
+    <div id="gameover-results"></div>
+  </div>
+</div>
+
+<!-- ══ GO/STOP OVERLAY ══ -->
+<div class="overlay" id="ov-gostop">
+  <div class="overlay-box">
+    <div class="overlay-title">🔥 고스톱 결정!</div>
+    <div class="overlay-sub" id="gostop-msg"></div>
+    <div class="btn-group">
+    <div style="display:flex;gap:6px;margin-bottom:6px">
+      <button class="btn-jjot" id="btn-jjot" onclick="doJjot()" style="display:none">🃏 쪽</button>
+      <button class="btn-shake" id="btn-shake" onclick="doShake()" style="display:none">👋 흔들기</button>
+    </div>
+      <button class="btn-go"   onclick="decide('go')">고! 🔥</button>
+      <button class="btn-stop" onclick="decide('stop')">스톱 ✋</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ WAIT OVERLAY ══ -->
+<div class="overlay" id="ov-wait">
+  <div class="overlay-box">
+    <div class="overlay-title" id="wait-msg">잠시 기다려주세요...</div>
+  </div>
+</div>
+
+<!-- ══ FIRST DRAW RESULT OVERLAY ══ -->
+<div class="overlay" id="ov-firstdraw-result">
+  <div class="overlay-box">
+    <div class="overlay-title">🎯 선 결정 결과</div>
+    <div id="fd-result-rows"></div>
+    <div class="fd-result-winner-msg" id="fd-result-msg"></div>
+    <div style="font-size:.78rem;color:#9ab;margin-top:4px" id="fd-result-hint"></div>
+  </div>
+</div>
+
+<!-- ══ TOAST ══ -->
+<div id="toast-container"></div>
+
+<!-- ══ 국화 선택 ══ -->
+<div class="overlay" id="ov-chrysanthemum">
+  <div class="overlay-box">
+    <div class="overlay-title">🌸 국화(9월) 열끗</div>
+    <div class="overlay-sub">이 카드를 어떻게 사용할까요?<br><span style="font-size:.78rem;color:#888">한번 선택하면 이 게임 내에서 바꿀 수 없습니다.</span></div>
+    <button class="btn btn-primary" style="margin-top:4px" onclick="chooseChrysanthemum('yeolkkut')">열끗으로 사용 <span style="font-size:.78rem;color:#ccc">(열끗 조합)</span></button>
+    <button class="btn btn-secondary" onclick="chooseChrysanthemum('pi')">쌍피로 사용 <span style="font-size:.78rem;color:#ccc">(피 2장)</span></button>
+  </div>
+</div>
+
+<!-- ══ CHAT FAB ══ -->
+<button class="chat-fab" id="chat-fab" onclick="toggleChat()">
+  💬
+  <span class="chat-badge" id="chat-badge">!</span>
+</button>
+
+<!-- ══ CHAT SHEET ══ -->
+<div class="chat-sheet" id="chat-sheet">
+  <div class="chat-sheet-header">
+    <span class="chat-sheet-title">💬 채팅</span>
+    <button class="chat-close" onclick="toggleChat()">✕</button>
+  </div>
+  <div class="chat-messages" id="chat-msgs"></div>
+  <div class="chat-input-row">
+    <input class="chat-input" id="chat-inp" placeholder="채팅..." onkeydown="if(event.key==='Enter')sendChat()" maxlength="60">
+    <button class="btn-chat" onclick="sendChat()">전송</button>
+  </div>
+</div>
+
+<script>
+// ── Auth ──────────────────────────────────────────────────────────────
+const TOKEN_KEY = 'gostop_token';
+
+function getToken() { return localStorage.getItem(TOKEN_KEY); }
+
+async function apiCall(path, body) {
+  const opts = { headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.method = 'POST', opts.body = JSON.stringify(body);
+  const token = getToken();
+  const url = token ? `${path}?token=${token}` : path;
+  const res = await fetch(url, opts);
+  return res.json();
+}
+
+function showRegister() {
+  document.getElementById('login-form').style.display = 'none';
+  document.getElementById('register-form').style.display = 'block';
+  const err = document.getElementById('auth-err');
+  err.textContent = '';
+  err.className = 'err-msg';
+}
+
+function showLogin() {
+  document.getElementById('login-form').style.display = 'block';
+  document.getElementById('register-form').style.display = 'none';
+  const err = document.getElementById('auth-err');
+  err.textContent = '';
+  err.className = 'err-msg';
+}
+
+function guestLogin() {
+  if (socket.connected) socket.disconnect();
+  socket.auth = { token: "" };
+  socket.connect();
+  // 게스트 로그인 - 회원가입 없이 바로 입장
+  localStorage.removeItem('gostop_token');
+  localStorage.removeItem('gostop_username');
+  localStorage.removeItem('gostop_money');
+  show('s-lobby');
+}
+
+async function doLogin() {
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('auth-err');
+
+  if (!username || !password) { errEl.textContent = '아이디와 비밀번호를 입력하세요.'; errEl.className = 'err-msg'; return; }
+
+  errEl.textContent = '로그인 중...';
+  errEl.className = 'err-msg';
+  const data = await apiCall('/api/login', { username, password });
+
+  if (data.error) { errEl.textContent = data.error; errEl.className = 'err-msg'; return; }
+
+  localStorage.setItem(TOKEN_KEY, data.token);
+  localStorage.setItem('gostop_username', data.user.username);
+  localStorage.setItem('gostop_money', data.user.money);
+
+  connectSocket(data.token);
+  show('s-lobby');
+  updateUserInfo();
+
+  document.getElementById('login-username').value = '';
+  document.getElementById('login-password').value = '';
+}
+
+async function doRegister() {
+  const username = document.getElementById('reg-username').value.trim();
+  const password = document.getElementById('reg-password').value;
+  const password2 = document.getElementById('reg-password2').value;
+  const errEl = document.getElementById('auth-err');
+
+  if (!username || username.length < 2) { errEl.textContent = '아이디는 2자 이상입니다.'; errEl.className = 'err-msg'; return; }
+  if (!password || password.length < 4) { errEl.textContent = '비밀번호는 4자 이상입니다.'; errEl.className = 'err-msg'; return; }
+  if (password !== password2) { errEl.textContent = '비밀번호가 일치하지 않습니다.'; errEl.className = 'err-msg'; return; }
+
+  errEl.textContent = '가입 중...';
+  errEl.className = 'err-msg';
+
+  const data = await apiCall('/api/register', { username, password });
+
+  if (data.error) { errEl.textContent = data.error; errEl.className = 'err-msg'; return; }
+
+  localStorage.setItem(TOKEN_KEY, data.token);
+  localStorage.setItem('gostop_username', data.user.username);
+  localStorage.setItem('gostop_money', data.user.money);
+
+  errEl.textContent = '🎉 가입 완료! 1,000만원 시드머니가 지급되었습니다!';
+  errEl.className = 'err-msg success';
+
+  setTimeout(() => {
+    connectSocket(data.token);
+    show('s-lobby');
+    updateUserInfo();
+    errEl.textContent = '';
+    errEl.className = 'err-msg';
+  }, 1500);
+}
+
+function doLogout() {
+  const token = getToken();
+  if (token) fetch('/api/logout?token=' + token, { method: 'POST' });
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem('gostop_username');
+  localStorage.removeItem('gostop_money');
+  if (socket) socket.disconnect();
+  show('s-login');
+}
+
+function updateUserInfo() {
+  const uname = localStorage.getItem('gostop_username');
+  const money = localStorage.getItem('gostop_money');
+  if (uname) document.getElementById('lobby-username').textContent = uname;
+  if (money) document.getElementById('lobby-money').textContent = Number(money).toLocaleString();
+}
+
+// ── 전역 상태 ────────────────────────────────────────────────────────
+const socket = io({
+    auth: { token: getToken() || '' },
+    autoConnect: false
+  });
+let myId       = null;
+let gs         = null;
+let selCard    = null;
+let pendingChoices = [];
+let waitField  = false, waitDeck = false;
+let chatOpen   = false, chatUnread = 0;
+let prevFieldIds = new Set();
+let isHost     = false;
+let fdMyPicked = false;  // 선 결정에서 내가 골랐는지
+let lastPlayedHandCardId = null; // 손패→바닥 카드 ID (덱 뒤집기와 구분)
+let lastAnimLpId = null;         // 마지막으로 애니메이션한 lastPlay handCard id
+let missGlowIds  = new Set();    // 내 미스 패 glow 대상 ID 집합
+let skipNextAnim = false;        // 내가 직접 낸 패는 바닥 애니메이션 스킵
+let cardById     = {};           // id → 카드 전체 정보 (lookup용)
+let _fpT1 = null, _fpT2 = null; // showFieldPlay 타이머
+
+// ── 효과음 (Web Audio API) ────────────────────────────────────────────
+const _ACtx = window.AudioContext || window.webkitAudioContext;
+let _ac = null;
+
+function _getAC() {
+  if (!_ac && _ACtx) {
+    try { _ac = new _ACtx(); } catch(e) {}
+  }
+  if (_ac && _ac.state === 'suspended') _ac.resume().catch(() => {});
+  return _ac;
+}
+
+// 첫 터치 시 AudioContext 활성화
+document.addEventListener('touchstart', _getAC, { once: true, passive: true });
+document.addEventListener('mousedown',  _getAC, { once: true, passive: true });
+
+function playSound(type) {
+  const ac = _getAC();
+  if (!ac) return;
+  const now = ac.currentTime;
+
+  if (type === 'miss') {
+    // 부드러운 탁- 소리 (손패가 바닥에 떨어짐, 맞는 패 없음)
+    const buf = ac.createBuffer(1, ac.sampleRate * 0.15, ac.sampleRate);
+    const d   = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) {
+      const t   = i / ac.sampleRate;
+      const env = Math.exp(-t * 30);
+      d[i] = ((Math.random() * 2 - 1) * 0.5 + Math.sin(2 * Math.PI * 110 * t) * 0.4) * env;
+    }
+    const src = ac.createBufferSource();
+    src.buffer = buf;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.5, now);
+    src.connect(g); g.connect(ac.destination);
+    src.start(now);
+
+  } else if (type === 'capture') {
+    // 짧은 딱- 소리 (패를 먹음)
+    const osc = ac.createOscillator();
+    const g   = ac.createGain();
+    osc.frequency.setValueAtTime(900, now);
+    osc.frequency.exponentialRampToValueAtTime(220, now + 0.07);
+    g.gain.setValueAtTime(0.55, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    osc.connect(g); g.connect(ac.destination);
+    osc.start(now); osc.stop(now + 0.1);
+    // 노이즈 클릭 레이어 추가
+    const buf2 = ac.createBuffer(1, Math.floor(ac.sampleRate * 0.04), ac.sampleRate);
+    const d2   = buf2.getChannelData(0);
+    for (let i = 0; i < d2.length; i++) {
+      d2[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ac.sampleRate * 0.008));
+    }
+    const src2 = ac.createBufferSource();
+    src2.buffer = buf2;
+    const g2 = ac.createGain();
+    g2.gain.setValueAtTime(0.35, now);
+    src2.connect(g2); g2.connect(ac.destination);
+    src2.start(now);
+
+  } else if (type === 'flip') {
+    // 휙- 카드 뒤집는 소리 (덱 카드 공개)
+    const dur = 0.28;
+    const buf = ac.createBuffer(1, Math.floor(ac.sampleRate * dur), ac.sampleRate);
+    const d   = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const src    = ac.createBufferSource();
+    src.buffer   = buf;
+    const flt    = ac.createBiquadFilter();
+    flt.type     = 'bandpass';
+    flt.Q.value  = 1.2;
+    flt.frequency.setValueAtTime(300, now);
+    flt.frequency.linearRampToValueAtTime(2200, now + 0.1);
+    flt.frequency.linearRampToValueAtTime(400,  now + dur);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0, now);
+    g.gain.linearRampToValueAtTime(0.3,   now + 0.04);
+    g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    src.connect(flt); flt.connect(g); g.connect(ac.destination);
+    src.start(now);
+
+  } else if (type === 'win') {
+    // 상승 아르페지오 팡파르 (게임 승리)
+    const notes = [523.25, 659.25, 783.99, 1046.5, 1318.5]; // C5 E5 G5 C6 E6
+    notes.forEach((freq, i) => {
+      const t   = now + i * 0.13;
+      const osc = ac.createOscillator();
+      const g   = ac.createGain();
+      osc.type  = 'sine';
+      osc.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.32, t + 0.04);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.65);
+      osc.connect(g); g.connect(ac.destination);
+      osc.start(t); osc.stop(t + 0.7);
+      // 하모닉 추가 (옥타브 위 부드럽게)
+      const osc2 = ac.createOscillator();
+      const g2   = ac.createGain();
+      osc2.type  = 'sine';
+      osc2.frequency.setValueAtTime(freq * 2, t);
+      g2.gain.setValueAtTime(0, t);
+      g2.gain.linearRampToValueAtTime(0.1, t + 0.04);
+      g2.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+      osc2.connect(g2); g2.connect(ac.destination);
+      osc2.start(t); osc2.stop(t + 0.55);
+    });
+  }
+}
+
+// ── 토스트 팝업 ───────────────────────────────────────────────────────
+function showToast(msg, duration = 2400) {
+  const container = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className   = 'toast';
+  el.textContent = msg;
+  container.appendChild(el);
+  const fadeOut = duration - 350;
+  setTimeout(() => {
+    el.style.animation = 'toastOut 0.35s ease-in forwards';
+    setTimeout(() => el.remove(), 360);
+  }, fadeOut);
+}
+
+// ── 카드 ID 룩업 테이블 갱신 ─────────────────────────────────────────
+function updateCardLookup(state) {
+  (state.field  || []).forEach(c => { cardById[c.id] = c; });
+  (state.myHand || []).forEach(c => { cardById[c.id] = c; });
+  Object.values(state.captured || {}).forEach(arr => arr.forEach(c => { cardById[c.id] = c; }));
+}
+
+// ── 바닥 임시 렌더 (애니메이션용, deal-in 없음) ──────────────────────
+function renderFieldTemp(cards, highlightIds) {
+  const el = document.getElementById('field-cards');
+  el.innerHTML = '';
+
+  const byMonth = {};
+  cards.forEach(c => { (byMonth[c.month] = byMonth[c.month] || []).push(c); });
+  const months = Object.keys(byMonth).map(Number).sort((a, b) => a - b);
+
+  months.forEach(month => {
+    const mc = byMonth[month];
+    const mkOne = c => {
+      const hi = highlightIds.has(c.id);
+      return makeCard(c, { extraClass: hi ? 'play-match' : '' });
+    };
+    if (mc.length >= 3) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'card-stack';
+      mc.forEach((c, i) => {
+        const cd = mkOne(c);
+        cd.style.position = 'absolute';
+        cd.style.top  = `${i * 3}px`;
+        cd.style.left = `${i * 3}px`;
+        cd.style.zIndex = highlightIds.has(c.id) ? 10 : i;
+        wrapper.appendChild(cd);
+      });
+      el.appendChild(wrapper);
+    } else {
+      mc.forEach(c => el.appendChild(mkOne(c)));
+    }
+  });
+  // prevFieldIds를 temp 상태에 맞게 갱신 → 이후 renderField에서 불필요한 deal-in 방지
+  prevFieldIds = new Set(cards.map(c => c.id));
+}
+
+// ── 낸 패를 바닥의 매칭 카드 위에 직접 겹쳐서 보여주는 애니메이션 ────
+// Phase 1(즉시): 손패 배치 → 0.4s
+// Phase 2(+0.4s): 덱 카드 배치 → 0.4s
+// 수집(+0.4s): float 슬라이드 0.3s (매칭 바닥 카드는 즉시 제거)
+function showFieldPlay(lp, state, nameMap, prevPlayerId) {
+  if (!lp || !lp.handCard || !Array.isArray(lp.deckCaptured)) return;
+
+  if (_fpT1) { clearTimeout(_fpT1); _fpT1 = null; }
+  if (_fpT2) { clearTimeout(_fpT2); _fpT2 = null; }
+
+  const layer = document.getElementById('fp-anim-layer');
+  if (layer) layer.innerHTML = '';
+
+  const name     = nameMap?.[prevPlayerId] || '상대';
+  const handCard = lp.handCard;
+  const deckCard = lp.deckCard;
+  const handMiss = lp.handCaptured.length === 0;
+  const deckMiss = lp.deckCaptured.length === 0;
+
+  // 손패로 잡은 바닥 카드 ID (손패 자신 제외)
+  const handFieldMatchIds = handMiss ? [] : lp.handCaptured.filter(id => id !== handCard.id);
+  // 덱으로 잡은 바닥 카드 ID (덱카드 자신 제외; 쪽이면 handCard.id 포함)
+  const deckFieldMatchIds = deckMiss ? [] : lp.deckCaptured.filter(id => id !== deckCard?.id);
+  // 덱이 잡은 실제 바닥 카드만 (쪽의 경우 handCard 제외)
+  const deckMatchFieldOnly = deckFieldMatchIds.filter(id => id !== handCard.id);
+
+  // ── 바닥 외 UI 갱신 ─────────────────────────────────────────────────
+  const s = state;
+  document.getElementById('deck-count').textContent  = s.deckSize;
+  document.getElementById('deck-count2').textContent = s.deckSize;
+  document.getElementById('my-hand-count').textContent = s.myHand.length;
+  renderMyHand(s.myHand, s.isMyTurn && s.phase === 'play');
+  renderMyCaptured(s.captured[myId] || []);
+  renderOpponents(s.playerIds, s.nameMap, s.handSizes, s.captured, s.scores, s.goCount, s.currentPlayerId, s.playerScores);
+  renderMyScore(s.scores[myId], s.playerScores?.[myId]);
+  document.getElementById('ov-wait').classList.remove('active');
+  if (s.isMyTurn && s.phase === 'play') {
+    setStatus('내 차례 — 손패에서 카드를 선택하세요', true);
+  } else {
+    setStatus(`${s.nameMap[s.currentPlayerId] || name}의 차례`, false);
+  }
+
+  if (!layer) { renderAll(state); return; }
+  const fieldEl = document.getElementById('field-cards');
+
+  // 낸 패를 바닥의 targetId 카드 위에 ~44% 겹치는 fixed 엘리먼트 생성
+  function placeFloat(playedCard, targetId) {
+    if (!playedCard || targetId === undefined) return null;
+    const tEl = fieldEl.querySelector(`[data-id="${targetId}"]`);
+    if (!tEl) return null;
+    const r = tEl.getBoundingClientRect();
+    const div = document.createElement('div');
+    div.className = 'fp-float-card';
+    div.dataset.cardId = playedCard.id;
+    div.style.cssText = `left:${r.left + r.width * 0.44}px;top:${r.top - r.height * 0.06}px;`
+      + `width:${r.width}px;height:${r.height}px;`
+      + `background-image:url('img/cards/${playedCard.id}.png?v=2');`
+      + `opacity:0;transform:rotate(-5deg) scale(1.06);`;
+    layer.appendChild(div);
+    requestAnimationFrame(() => {
+      div.style.transition = 'opacity .18s ease, transform .25s ease';
+      div.style.opacity    = '1';
+      div.style.transform  = 'rotate(-3deg) scale(1)';
+    });
+    return div;
+  }
+
+  // ── Phase 1: 손패 카드 배치 ─────────────────────────────────────────
+  // 바닥: deckCard 제외한 state.field + 손패 매칭 카드 복원
+  const phase1Field = state.field.filter(c => c.id !== deckCard?.id);
+  const p1Seen = new Set(phase1Field.map(c => c.id));
+  handFieldMatchIds.forEach(id => {
+    if (!p1Seen.has(id)) {
+      const c = cardById[id];
+      if (c) { phase1Field.push(c); p1Seen.add(id); }
+    }
+  });
+  // deal-in 제어: 매칭 카드 → no deal-in, handMiss 카드 → deal-in
+  handFieldMatchIds.forEach(id => prevFieldIds.add(id));
+  if (handMiss) prevFieldIds.delete(handCard.id);
+  renderField(phase1Field);
+
+  // 손패 캡처: 매칭 바닥 카드 위에 float 배치
+  if (!handMiss && handFieldMatchIds.length > 0) {
+    placeFloat(handCard, handFieldMatchIds[0]);
+  }
+
+  // ── Phase 2: 덱 카드 배치 (0.4초 후) ─────────────────────────────────
+  _fpT1 = setTimeout(() => {
+    _fpT1 = null;
+
+    // 바닥: state.field + 손패/덱 매칭 카드 모두 복원
+    const phase2Field = [...state.field];
+    const p2Seen = new Set(phase2Field.map(c => c.id));
+    const addToP2 = id => {
+      if (p2Seen.has(id)) return;
+      const c = id === handCard.id  ? handCard
+              : id === deckCard?.id ? deckCard
+              : cardById[id];
+      if (c) { phase2Field.push(c); p2Seen.add(id); }
+    };
+    handFieldMatchIds.forEach(addToP2);
+    deckFieldMatchIds.forEach(addToP2);
+
+    // deal-in 제어: 실제 덱 매칭 바닥 카드 → no deal-in
+    //              deckCard(miss) / jjok handCard → prevFieldIds에 없으면 자동 deal-in
+    deckMatchFieldOnly.forEach(id => prevFieldIds.add(id));
+    renderField(phase2Field);
+
+    // 덱 캡처: 매칭 바닥 카드 위에 float 배치
+    if (!deckMiss && deckFieldMatchIds.length > 0) {
+      placeFloat(deckCard, deckFieldMatchIds[0]);
+    }
+
+    // ── 수집 애니메이션 (0.4초 후) ────────────────────────────────────
+    _fpT2 = setTimeout(() => {
+      _fpT2 = null;
+
+      const floats      = [...layer.querySelectorAll('.fp-float-card')];
+      const allMatchIds = [...new Set([...handFieldMatchIds, ...deckFieldMatchIds])];
+
+      // 수집할 카드 없으면 즉시 renderAll (쌓인 패 등)
+      if (floats.length === 0 && allMatchIds.length === 0) {
+        layer.innerHTML = '';
+        renderAll(state);
+        return;
+      }
+
+      // 타깃: 상대 패널 또는 내 획득 영역
+      const opPanel = document.querySelector(`[data-pid="${prevPlayerId}"]`);
+      const myCapEl = document.getElementById('my-captured');
+      const tgt     = (opPanel || myCapEl)?.getBoundingClientRect();
+
+      // 매칭된 바닥 카드: 즉시 제거 (float이 이동 애니 담당)
+      allMatchIds.forEach(id => {
+        const el = fieldEl.querySelector(`[data-id="${id}"]`);
+        if (el) el.remove();
+      });
+
+      // Float 카드 → 획득 영역으로 슬라이드 (0.3초)
+      floats.forEach(f => {
+        const fr = f.getBoundingClientRect();
+        const dx = tgt ? (tgt.left + tgt.width / 2) - (fr.left + fr.width / 2) : 0;
+        const dy = tgt ? (tgt.top + tgt.height / 2) - (fr.top + fr.height / 2)
+                       : (opPanel ? -150 : 150);
+        f.style.transition = 'opacity .3s ease, transform .3s ease';
+        f.style.transform  = `translate(${dx}px,${dy}px) scale(0.25)`;
+        f.style.opacity    = '0';
+      });
+
+      setTimeout(() => {
+        layer.innerHTML = '';
+        renderAll(state);
+      }, 330);
+    }, 400);
+  }, 400);
+}
+
+// ── 획득 카드 토글 ────────────────────────────────────────────────────
+function toggleCaptured() {
+  const area = document.getElementById('my-captured');
+  const btn  = document.getElementById('cap-toggle');
+  const open = area.classList.toggle('open');
+  btn.textContent = open ? '획득 카드 접기 ▴' : '획득 카드 펼치기 ▾';
+}
+
+// ── 유틸 ─────────────────────────────────────────────────────────────
+function makeCard(c, { onClick, extraClass = '' } = {}) {
+  const d = document.createElement('div');
+  d.className = `card ${extraClass}`;
+  d.dataset.id = c.id;
+  d.style.backgroundImage = `url('img/cards/${c.id}.png?v=2')`;
+  d.style.backgroundSize = '100% 100%';
+  if (c.double) {
+    const badge = document.createElement('span');
+    badge.className = 'double-badge';
+    badge.textContent = '×2';
+    d.appendChild(badge);
+  }
+  if (onClick) d.addEventListener('click', () => onClick(c));
+  return d;
+}
+
+
+function connectSocket(token) {
+  // Update existing socket auth and connect
+  socket.auth = { token: token };
+  if (!socket.connected) {
+    socket.connect();
+  }
+}
+
+
+function show(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function toggleChat() {
+  chatOpen = !chatOpen;
+  document.getElementById('chat-sheet').classList.toggle('open', chatOpen);
+  if (chatOpen) {
+    chatUnread = 0;
+    document.getElementById('chat-badge').classList.remove('show');
+    setTimeout(() => document.getElementById('chat-inp').focus(), 300);
+  }
+}
+
+// ── 로비 ─────────────────────────────────────────────────────────────
+function createRoom() {
+  const n = document.getElementById('inp-name').value.trim();
+  const s = parseInt(document.getElementById("inp-seed").value) || 5000;
+  const f = parseInt(document.getElementById("inp-entryfee").value) || 0;
+  if (!n) return lobbyErr('이름을 입력하세요.');
+  socket.emit('create_room', { name: n, seedMoney: s, entryFee: f, mode: document.getElementById('inp-mode').value });
+}
+
+function doJjot() {
+  const btn = document.getElementById('btn-jjot');
+  if (btn && btn._action) {
+    socket.emit('jjot', { month: btn._action.month });
+    btn.style.display = 'none';
+    btn._action = null;
+  }
+}
+
+function doShake() {
+  const btn = document.getElementById('btn-shake');
+  if (btn && btn._action) {
+    socket.emit('shake', { month: btn._action.month });
+    btn.style.display = 'none';
+    btn._action = null;
+  }
+}
+
+// 게임 상태 받을 때 쪽/흔들기 체크 요청
+function checkActions() {
+  socket.emit('check_actions');
+}
+function joinRoom() {
+  const n = document.getElementById('inp-name').value.trim();
+  const r = document.getElementById('inp-room').value.trim();
+  if (!n) return lobbyErr('이름을 입력하세요.');
+  if (!/^\d{4}$/.test(r)) return lobbyErr('방 코드는 숫자 4자리입니다.');
+  socket.emit('join_room', { roomId: r, name: n });
+}
+function startGame() { socket.emit('start_game'); }
+
+// 고 배율 표시 문자열 생성
+// 1고: +1, 2고: +2 추가, 3고~: ×2 누적
+function goScoreLabel(score, goCount) {
+  if (goCount === 0) return `${score}점`;
+  let parts = [`${score}점`];
+  if (goCount >= 1) parts.push('+1');
+  if (goCount >= 2) parts.push('+2');
+  if (goCount >= 3) parts.push(`×${Math.pow(2, goCount - 2)}`);
+  return `(${goCount}고) ${parts.join(' ')}`;
+}
+function lobbyErr(m) { document.getElementById('lobby-err').textContent = m; }
+function roomErr(m)  { document.getElementById('room-err').textContent = m; }
+
+function quickJoin(roomId) {
+  const n = document.getElementById('inp-name').value.trim();
+  if (!n) return lobbyErr('이름을 먼저 입력하세요.');
+  socket.emit('join_room', { roomId, name: n });
+}
+
+function renderPlayers(ps) {
+  const ul = document.getElementById('player-list');
+  ul.innerHTML = '';
+  ps.forEach((p, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="player-dot"></span> ${p.name}${p.money !== undefined ? ` 💰${p.money}` : ""}${i===0?' <span style="color:var(--gold);font-size:.75rem">(방장)</span>':''}`;
+    ul.appendChild(li);
+  });
+  document.getElementById('player-count').textContent = ps.length;
+}
+
+// ── 선 결정 화면 ──────────────────────────────────────────────────────
+function renderFirstDraw(cardIds, playerIds, nameMap, playerScores) {
+  fdMyPicked = false;
+
+  // 픽 슬롯 생성
+  const picksRow = document.getElementById('fd-picks-row');
+  picksRow.innerHTML = '';
+  playerIds.forEach(pid => {
+    const slot = document.createElement('div');
+    slot.className = 'fd-pick-slot';
+    slot.id = `fd-slot-${pid}`;
+    slot.innerHTML = `
+      <div class="fd-pick-name">${nameMap[pid]}</div>
+      <div class="fd-pick-card waiting" id="fd-pick-${pid}">
+        <span style="font-size:1.4rem;opacity:.3">🀫</span>
+      </div>
+      <div class="fd-pick-month" id="fd-month-${pid}">?</div>`;
+    if (playerScores && playerScores[pid] !== undefined) {
+      const sc = document.createElement('div');
+      sc.style.cssText = 'font-size:.58rem;color:#aaa;margin-top:1px';
+      sc.textContent = `${playerScores[pid]}점`;
+      slot.appendChild(sc);
+    }
+    picksRow.appendChild(slot);
+  });
+
+  // 뒷면 카드 48장
+  const cardsEl = document.getElementById('fd-cards');
+  cardsEl.innerHTML = '';
+  cardIds.forEach(cid => {
+    const el = document.createElement('div');
+    el.className = 'card-back';
+    el.id = `fd-card-${cid}`;
+    el.innerHTML = '🀫';
+    el.addEventListener('click', () => {
+      if (fdMyPicked) return;
+      fdMyPicked = true;
+      el.classList.add('mine-picked');
+      el.innerHTML = '✓';
+      socket.emit('first_draw_pick', { cardId: cid });
+    });
+    cardsEl.appendChild(el);
+  });
+
+  document.getElementById('fd-status').textContent = '카드를 한 장 선택하세요';
+}
+
+// ── 소켓 이벤트 ──────────────────────────────────────────────────────
+socket.on('room_ready', d => {
+  // 입장료/상금 표시
+  const modeDisplay = document.getElementById('mode-display');  if (modeDisplay) {    const label = d.mode === 'matgo' ? '🎯 맞고' : '🃏 고스톱';    document.getElementById('room-mode-label').textContent = label;    modeDisplay.style.display = 'block';  }
+  const entryFeeDisplay = document.getElementById('entry-fee-display');
+  if (d.entryFee && d.entryFee > 0) {
+    entryFeeDisplay.style.display = 'block';
+    document.getElementById('room-entry-fee').textContent = d.entryFee.toLocaleString();
+    document.getElementById('room-prize-pool').textContent = (d.prizePool || 0).toLocaleString();
+  } else {
+    entryFeeDisplay.style.display = 'none';
+  }
+  document.getElementById('room-code-display').textContent = d.roomId;
+  document.getElementById("room-seed-money").textContent = d.seedMoney;
+  renderPlayers(d.players);
+  isHost = d.isHost;
+  if (d.isHost) {
+    document.getElementById('btn-start').style.display = '';
+    document.getElementById('waiting-msg').style.display = 'none';
+  }
+  show('s-room');
+});
+
+socket.on('player_joined', d => {
+  renderPlayers(d.players);
+  sysChat(`${d.players[d.players.length-1].name}님이 참가했습니다.`);
+});
+
+socket.on('player_left', d => {
+  renderPlayers(d.players);
+  sysChat(`${d.name}님이 나갔습니다.`);
+});
+
+socket.on('err', m => { lobbyErr(m); roomErr(m); });
+
+socket.on('room_list', ({ rooms }) => {
+  const box = document.getElementById('room-list-box');
+  const el  = document.getElementById('room-list-el');
+  el.innerHTML = '';
+
+  const waiting = rooms.filter(r => r.playerCount > 0);
+  box.style.display = waiting.length > 0 ? '' : 'none';
+
+  if (waiting.length === 0) return;
+
+  waiting.forEach(r => {
+    const item = document.createElement('div');
+    item.className = 'room-list-item';
+    item.innerHTML = `
+      <div>
+        <div class="room-list-code">${r.roomId}</div>
+        <div class="room-list-info">${r.playerCount}명 · ${r.mode === 'matgo' ? '🎯맞고' : '🃏고스톱'} · 시드머니 ${r.seedMoney}원</div>
+      </div>
+      <button class="btn-join-room" onclick="quickJoin('${r.roomId}')">참가 →</button>`;
+    el.appendChild(item);
+  });
+});
+
+socket.on('first_draw_start', d => {
+  document.getElementById('chat-fab').classList.add('visible');
+  renderFirstDraw(d.cardIds, d.playerIds, d.nameMap, d.playerScores);
+  show('s-firstdraw');
+});
+
+socket.on('first_draw_picked', d => {
+  // 해당 카드 뒷면 → 앞면으로
+  const el = document.getElementById(`fd-card-${d.card.id}`);
+  if (el) {
+    el.classList.add('other-picked');
+    el.innerHTML = `<img class="card-img" src="img/cards/${d.card.id}.png?v=2">`;
+  }
+  // 픽 슬롯 업데이트
+  const pickEl = document.getElementById(`fd-pick-${d.pid}`);
+  if (pickEl) {
+    pickEl.className = 'fd-pick-card done';
+    pickEl.innerHTML = `<img src="img/cards/${d.card.id}.png?v=2" style="width:40px;height:60px;border-radius:4px;object-fit:cover">`;
+  }
+  const monthEl = document.getElementById(`fd-month-${d.pid}`);
+  if (monthEl) monthEl.textContent = `${d.card.month}월`;
+
+  document.getElementById('fd-status').textContent =
+    `${d.pickedCount} / ${d.totalCount}명 선택 완료`;
+});
+
+socket.on('first_draw_result', d => {
+  // 결과 오버레이
+  const rows = document.getElementById('fd-result-rows');
+  rows.innerHTML = '';
+  const sorted = Object.entries(d.picks).sort((a,b) =>
+    b[1].month - a[1].month || b[1].id - a[1].id
+  );
+  sorted.forEach(([pid, card]) => {
+    const row = document.createElement('div');
+    row.className = 'fd-result-row' + (pid === d.firstPlayerId ? ' first-player' : '');
+    row.innerHTML = `
+      <span>${pid === d.firstPlayerId ? '👑 ' : ''}${d.nameMap[pid]}</span>
+      <span>${card.month}월 &nbsp;<span style="font-size:.75rem;color:#aaa">${card.name}</span></span>`;
+    rows.appendChild(row);
+  });
+  document.getElementById('fd-result-msg').textContent =
+    `👑 ${d.nameMap[d.firstPlayerId]}이(가) 선!`;
+  document.getElementById('fd-result-hint').textContent =
+    isHost ? '잠시 후 게임이 시작됩니다...' : '방장이 게임을 시작하면 시작됩니다.';
+
+  document.getElementById('ov-firstdraw-result').classList.add('active');
+
+  // 방장이 2.5초 후 자동으로 게임 시작 요청
+  if (isHost) {
+    setTimeout(() => socket.emit('start_game'), 2500);
+  }
+});
+
+socket.on('first_draw_cancelled', d => {
+  sysChat(d.msg);
+  document.getElementById('ov-firstdraw-result').classList.remove('active');
+  show('s-room');
+});
+
+socket.on('game_started', d => {
+  document.getElementById('ov-firstdraw-result').classList.remove('active');
+  document.getElementById('chat-fab').classList.add('visible');
+  // 게임 전환 시 애니메이션 상태 초기화
+  lastAnimLpId = null;
+  skipNextAnim = false;
+  missGlowIds.clear();
+  if (_fpT1) { clearTimeout(_fpT1); _fpT1 = null; }
+  if (_fpT2) { clearTimeout(_fpT2); _fpT2 = null; }
+  const _fal = document.getElementById('fp-anim-layer');
+  if (_fal) _fal.innerHTML = '';
+  show('s-game');
+});
+
+socket.on('game_state', state => {
+  const lp           = state.lastPlay;
+  const prevPlayerId = gs?.currentPlayerId; // 이전 gs의 현재 플레이어 = 방금 낸 사람
+
+  updateCardLookup(state); // 카드 ID 룩업 갱신 (플레이 전 바닥 정보 포함)
+
+  gs    = state;
+  myId  = state.myId;
+
+  // ── 낸 패 바닥 애니메이션 ────────────────────────────────────────
+  const isCompletedPlay = lp && lp.handCard && Array.isArray(lp.deckCaptured);
+  if (isCompletedPlay && lp.handCard.id !== lastAnimLpId) {
+    lastAnimLpId = lp.handCard.id;
+
+    if (skipNextAnim) {
+      // 내 플레이: 즉시 렌더, 내 미스 패에만 glow
+      skipNextAnim = false;
+      if (lp.handCaptured.length === 0) missGlowIds.add(lp.handCard.id);
+      renderAll(state); checkActions();
+    } else {
+      // 상대 플레이: 바닥에 카드 겹쳐 보여주는 애니메이션
+      showFieldPlay(lp, state, state.nameMap, prevPlayerId);
+    }
+  } else {
+    // 중간 단계(choose_deck_field) 또는 새 게임 초기 상태
+    if (!isCompletedPlay && skipNextAnim) {
+      // 내 플레이 중간 단계 — 스킵 플래그 유지
+    } else {
+      skipNextAnim = false;
+    }
+    renderAll(state); checkActions();
+  }
+
+  // 국화(id:32) 보유 중인데 아직 선택 안 했으면 팝업 표시 (안전장치)
+  const hasChrys = (state.captured?.[myId] || []).some(c => c.id === 32);
+  if (hasChrys && !state.chrysanthemumChoices?.[myId]) {
+    document.getElementById('ov-chrysanthemum').classList.add('active');
+  }
+});
+
+socket.on('go_stop_prompt', ({ pid, name, score }) => {
+  if (pid === myId) {
+    document.getElementById('gostop-msg').textContent = `현재 점수: ${score}점 — 계속할까요?`;
+    const goBtn = document.querySelector('.btn-go');
+    if (goBtn) { goBtn.disabled = false; goBtn.style.opacity = ''; goBtn.style.cursor = ''; }
+    document.getElementById('ov-gostop').classList.add('active');
+  } else {
+    document.getElementById('wait-msg').textContent = `${name}이(가) 고/스톱 결정 중...`;
+    document.getElementById('ov-wait').classList.add('active');
+  }
+});
+
+socket.on('player_went', () => {
+  document.getElementById('ov-wait').classList.remove('active');
+  document.getElementById('ov-gostop').classList.remove('active');
+});
+
+socket.on('choose_field_card', ({ card, choices }) => {
+  waitField = true;
+  selCard = card;
+  pendingChoices = choices;
+  renderField(gs.field);
+  setStatus('획득할 바닥 카드를 선택하세요', true);
+});
+
+socket.on('choose_deck_field_card', ({ card, choices }) => {
+  waitDeck = true;
+  pendingChoices = choices;
+  renderField(gs.field);
+  setStatus(`${card.month}월 덱카드 — 획득할 바닥 카드를 선택하세요`, true);
+});
+
+socket.on('special_event', ({ msg }) => showToast(msg));
+
+socket.on('choose_chrysanthemum', () => {
+  document.getElementById('ov-chrysanthemum').classList.add('active');
+});
+
+function chooseChrysanthemum(choice) {
+  document.getElementById('ov-chrysanthemum').classList.remove('active');
+  socket.emit('chrysanthemum_choice', { choice });
+}
+
+socket.on('chat', d => addChat(d));
+
+socket.on('game_over', ({ winner, nameMap, results, playerScores, deltas, roomOver, chongtong, pato, patoMult, dokbakPid }) => {
+  document.getElementById('ov-gostop').classList.remove('active');
+  document.getElementById('ov-wait').classList.remove('active');
+
+  if (!pato && winner === myId) playSound('win');
+
+  const el = document.getElementById('gameover-results');
+  el.innerHTML = '';
+
+  // ── 파토 처리 ────────────────────────────────────────────────────
+  if (pato) {
+    const gt = document.createElement('div');
+    gt.className = 'gameover-title';
+    gt.textContent = '🔄 파토!';
+    el.appendChild(gt);
+
+    const sub = document.createElement('div');
+    sub.style.cssText = 'text-align:center;color:#f0a040;font-size:.88rem;margin-bottom:12px';
+    sub.textContent = `아무도 나지 못했습니다. 다음 게임은 ${patoMult}배 게임입니다.`;
+    el.appendChild(sub);
+
+    if (playerScores && Object.keys(playerScores).length > 0) {
+      const st = document.createElement('div');
+      st.className = 'gameover-section-title';
+      st.textContent = '💰 보유 점수 현황 (변동 없음)';
+      el.appendChild(st);
+      Object.entries(playerScores).sort((a,b)=>b[1]-a[1]).forEach(([pid, score]) => {
+        const row = document.createElement('div');
+        row.className = `chips-row${score===0?' eliminated':''}`;
+        row.innerHTML = `<span>${nameMap[pid]||pid}</span><span style="color:var(--gold)"><b>${score}점</b></span>`;
+        el.appendChild(row);
+      });
+    }
+
+    const btnArea = document.createElement('div');
+    btnArea.style.cssText = 'margin-top:16px;display:flex;flex-direction:column;gap:8px';
+    if (isHost) {
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-primary';
+      btn.textContent = `다음 게임 (${patoMult}배) ▶`;
+      btn.onclick = () => { btn.disabled = true; btn.textContent = '시작 중...'; socket.emit('start_game'); };
+      btnArea.appendChild(btn);
+    } else {
+      const msg = document.createElement('div');
+      msg.style.cssText = 'text-align:center;color:#aaa;font-size:.85rem';
+      msg.textContent = '방장이 다음 게임을 시작할 때까지 기다려주세요.';
+      btnArea.appendChild(msg);
+    }
+    const quit = document.createElement('button');
+    quit.className = 'btn'; quit.style.background = '#333';
+    quit.textContent = '방 나가기'; quit.onclick = () => location.reload();
+    btnArea.appendChild(quit);
+    el.appendChild(btnArea);
+    show('s-gameover');
+    return;
+  }
+
+  // ── 이번 게임 결과 ────────────────────────────────────────────────
+  const gt = document.createElement('div');
+  gt.className   = 'gameover-title';
+  gt.textContent = chongtong ? '🀄 총통!' : '🏆 이번 게임 결과';
+  el.appendChild(gt);
+
+  if (chongtong) {
+    const sub = document.createElement('div');
+    sub.style.cssText = 'text-align:center;color:#f0c040;font-size:.84rem;margin-bottom:10px';
+    sub.textContent   = '같은 월 카드 4장 획득 — 자동 승리 (3점)';
+    el.appendChild(sub);
+  }
+
+  if (patoMult > 1) {
+    const sub = document.createElement('div');
+    sub.style.cssText = 'text-align:center;color:#f0a040;font-size:.8rem;margin-bottom:8px';
+    sub.textContent = `🔄 파토 누적 ${patoMult}배 적용`;
+    el.appendChild(sub);
+  }
+
+  const sorted = Object.entries(results).sort((a,b) => b[1].total - a[1].total);
+  sorted.forEach(([pid, r]) => {
+    const row = document.createElement('div');
+    row.className = `result-row ${pid===winner?'winner':''}`;
+    if (r.chongtong) {
+      const patoStr = (r.patoMult > 1) ? ` ×${r.patoMult}파토` : '';
+      row.innerHTML = `
+        <span>🀄 ${nameMap[pid]}</span>
+        <span style="color:var(--gold);font-weight:bold">총통 ${r.total}점${patoStr}</span>`;
+    } else {
+      const go          = goScoreLabel(r.score, r.goCount);
+      const heundeulStr = (r.heundeulMult > 1)    ? ` <span style="color:#7af">×${r.heundeulMult} 흔들</span>` : '';
+      const patoStr     = (r.patoMult > 1)         ? ` <span style="color:#f0a040">×${r.patoMult} 파토</span>` : '';
+      // 패자 박 표시: 박이 있으면 차감액 뒤에 표기
+      const bakStr      = (r.bakTypes?.length > 0) ? ` <span style="color:#f05050">💥${r.bakTypes.join('+')} ×${r.bakMult}</span>` : '';
+      // 독박 표시
+      const isDokbak    = (pid === dokbakPid && pid !== winner);
+      const dokbakStr   = isDokbak ? ` <span style="color:#f03030;font-size:.72rem">🔴독박</span>` : '';
+      row.innerHTML = `
+        <span>${pid===winner?'🏆 ':''}${nameMap[pid]}${dokbakStr}</span>
+        <span style="font-size:.82rem;color:${pid===winner?'var(--gold)':'#bbb'};text-align:right">
+          ${go}${heundeulStr}${patoStr} = <b>${r.total}점</b>${bakStr}<br>
+          <span style="font-size:.7rem">광${r.counts.gwang} 열끗${r.counts.yeol} 띠${r.counts.ribbon} 피${r.counts.pi}</span>
+        </span>`;
+    }
+    el.appendChild(row);
+  });
+
+  // ── 획득 카드 상세 ────────────────────────────────────────────────
+  const hasCapData = sorted.some(([, r]) => r.capturedCards?.length > 0);
+  if (hasCapData) {
+    const capTitle = document.createElement('div');
+    capTitle.className = 'gameover-section-title';
+    capTitle.textContent = '🃏 획득 카드 상세';
+    el.appendChild(capTitle);
+
+    // 승자 먼저 표시
+    const capSorted = [...sorted].sort(([a],[b]) => (a===winner?-1 : b===winner?1 : 0));
+    capSorted.forEach(([pid, r]) => {
+      const caps = r.capturedCards || [];
+      const playerDiv = document.createElement('div');
+      playerDiv.className = 'result-cap-player';
+
+      const nameDiv = document.createElement('div');
+      nameDiv.className = `result-cap-name${pid===winner?' is-winner':''}`;
+      nameDiv.textContent = `${pid===winner?'🏆 ':''}${nameMap[pid]}`;
+      playerDiv.appendChild(nameDiv);
+
+      if (!caps.length) {
+        const emptyEl = document.createElement('span');
+        emptyEl.style.cssText = 'font-size:.65rem;color:#555';
+        emptyEl.textContent = '획득 카드 없음';
+        playerDiv.appendChild(emptyEl);
+      } else {
+        const typeOrder  = ['gwang','yeolkkut','ribbon','pi'];
+        const typeLabels = { gwang:'광', yeolkkut:'열끗', ribbon:'띠', pi:'피' };
+        const groups     = { gwang:[], yeolkkut:[], ribbon:[], pi:[] };
+        caps.forEach(c => { if (groups[c.type]) groups[c.type].push(c); });
+
+        typeOrder.forEach(type => {
+          const cs = groups[type];
+          if (!cs.length) return;
+          const capRow = document.createElement('div');
+          capRow.className = 'result-cap-row';
+          const lbl = document.createElement('span');
+          lbl.className = 'result-cap-label';
+          lbl.textContent = typeLabels[type];
+          capRow.appendChild(lbl);
+          cs.forEach(c => {
+            const img = document.createElement('div');
+            img.className = 'result-cap-card';
+            img.style.backgroundImage = `url('img/cards/${c.id}.png?v=2')`;
+            if (c.double) {
+              const badge = document.createElement('span');
+              badge.className = 'result-cap-badge';
+              badge.textContent = '×2';
+              img.appendChild(badge);
+            }
+            capRow.appendChild(img);
+          });
+          playerDiv.appendChild(capRow);
+        });
+
+        // 점수 내역 텍스트
+        const bd = r.breakdown || {};
+        const bdParts = [];
+        if (bd.gwang)  bdParts.push(`광 ${bd.gwang}점`);
+        if (bd.godori) bdParts.push(`고도리 ${bd.godori}점`);
+        if (bd.yeol)   bdParts.push(`열끗 ${bd.yeol}점`);
+        if (bd.ribbon) {
+          const subNote = bd.ribbonSubs?.length ? ` (${bd.ribbonSubs.join('·')})` : '';
+          bdParts.push(`띠 ${bd.ribbon}점${subNote}`);
+        }
+        if (bd.pi)     bdParts.push(`피 ${bd.pi}점`);
+        const bdDiv = document.createElement('div');
+        bdDiv.className = 'result-breakdown';
+        bdDiv.textContent = bdParts.length
+          ? `점수: ${bdParts.join(' + ')} = ${r.score}점`
+          : '점수: 0점';
+        playerDiv.appendChild(bdDiv);
+      }
+      el.appendChild(playerDiv);
+    });
+  }
+
+  // ── 보유 점수 현황 ────────────────────────────────────────────────
+  if (playerScores && Object.keys(playerScores).length > 0) {
+    const st = document.createElement('div');
+    st.className = 'gameover-section-title';
+    st.textContent = '💰 보유 점수 현황';
+    el.appendChild(st);
+
+    const scSorted = Object.entries(playerScores).sort((a,b) => b[1] - a[1]);
+    const n = scSorted.length;
+    scSorted.forEach(([pid, score]) => {
+      const delta = deltas ? deltas[pid] : 0;
+      const row = document.createElement('div');
+      row.className = `chips-row${score === 0 ? ' eliminated' : ''}`;
+      const deltaHtml = delta > 0
+        ? `<span class="delta-plus">(+${delta})</span>`
+        : delta < 0
+        ? `<span class="delta-minus">(${delta})</span>`
+        : '';
+      row.innerHTML = `
+        <span>${nameMap[pid] || pid}${score===0?' 💀':''}</span>
+        <span style="color:${score===0?'#f06':'var(--gold)'}">
+          <b>${score}점</b> ${deltaHtml}
+        </span>`;
+      el.appendChild(row);
+    });
+  }
+
+  // ── 버튼 영역 ─────────────────────────────────────────────────────
+  const btnArea = document.createElement('div');
+  btnArea.style.cssText = 'margin-top: 16px; display:flex; flex-direction:column; gap:8px;';
+
+  if (roomOver) {
+    const msg = document.createElement('div');
+    msg.style.cssText = 'text-align:center;color:#f06060;font-size:.9rem;margin-bottom:6px';
+    msg.textContent = '💀 누군가의 점수가 0이 되어 방이 종료되었습니다.';
+    btnArea.appendChild(msg);
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-primary';
+    btn.textContent = '처음으로';
+    btn.onclick = () => location.reload();
+    btnArea.appendChild(btn);
+  } else if (isHost) {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-primary';
+    btn.textContent = '다음 게임 ▶';
+    btn.onclick = () => {
+      btn.disabled = true;
+      btn.textContent = '게임 시작 중...';
+      socket.emit('start_game');
+    };
+    btnArea.appendChild(btn);
+    const quit = document.createElement('button');
+    quit.className = 'btn';
+    quit.style.background = '#333';
+    quit.textContent = '방 나가기';
+    quit.onclick = () => location.reload();
+    btnArea.appendChild(quit);
+  } else {
+    const msg = document.createElement('div');
+    msg.style.cssText = 'text-align:center;color:#aaa;font-size:.85rem;margin-bottom:4px';
+    msg.textContent = '방장이 다음 게임을 시작할 때까지 기다려주세요.';
+    btnArea.appendChild(msg);
+    const quit = document.createElement('button');
+    quit.className = 'btn';
+    quit.style.background = '#333';
+    quit.textContent = '방 나가기';
+    quit.onclick = () => location.reload();
+    btnArea.appendChild(quit);
+  }
+  el.appendChild(btnArea);
+
+  show('s-gameover');
+});
+
+// ── 게임 렌더링 ──────────────────────────────────────────────────────
+function renderAll(s) {
+  const { myHand, field, captured, handSizes, currentPlayerId,
+          isMyTurn, playerIds, nameMap, scores, goCount, deckSize,
+          phase, playerScores } = s;
+
+  document.getElementById('deck-count').textContent  = deckSize;
+  document.getElementById('deck-count2').textContent = deckSize;
+  document.getElementById('my-hand-count').textContent = myHand.length;
+
+  if (isMyTurn && phase === 'play') {
+    setStatus('내 차례 — 손패에서 카드를 선택하세요', true);
+  } else if (!isMyTurn) {
+    setStatus(`${nameMap[currentPlayerId]}의 차례`, false);
+    document.getElementById('ov-wait').classList.remove('active');
+  }
+
+  renderField(field);
+  renderMyHand(myHand, isMyTurn && phase === 'play');
+  renderMyCaptured(captured[myId] || []);
+  renderOpponents(playerIds, nameMap, handSizes, captured, scores, goCount, currentPlayerId, playerScores);
+  renderMyScore(scores[myId], playerScores ? playerScores[myId] : undefined);
+
+  if (isMyTurn) document.getElementById('ov-wait').classList.remove('active');
+}
+
+function setStatus(msg, mine) {
+  document.getElementById('status-turn').textContent  = mine ? '🟢 내 차례' : '⏳';
+  document.getElementById('status-phase').textContent = msg;
+}
+
+function renderField(cards) {
+  const el = document.getElementById('field-cards');
+  el.innerHTML = '';
+
+  const byMonth = {};
+  cards.forEach(c => { (byMonth[c.month] = byMonth[c.month] || []).push(c); });
+  const months = Object.keys(byMonth).map(Number).sort((a, b) => a - b);
+
+  let flipSoundScheduled = false; // 덱 뒤집기 소리는 한 번만
+
+  months.forEach(month => {
+    const mc = byMonth[month];
+    const makeFieldCard = (c, i = 0) => {
+      const isChoice = pendingChoices.includes(c.id) && (waitField || waitDeck);
+      const isMatch  = selCard && !waitField && !waitDeck && gs?.isMyTurn && gs?.phase==='play' && c.month === selCard.month;
+      const ec       = isChoice || isMatch ? 'highlight' : '';
+      const onClick  = isChoice || isMatch ? () => fieldClick(c.id) : null;
+      const cd       = makeCard(c, { onClick, extraClass: ec });
+      if (!prevFieldIds.has(c.id)) {
+        cd.classList.add('deal-in');
+        cd.style.animationDelay = `${i * 55}ms`;
+        // 손패→바닥(miss)은 doPlay에서 이미 소리를 냄 → 덱 카드만 flip 소리
+        if (c.id !== lastPlayedHandCardId && !flipSoundScheduled) {
+          flipSoundScheduled = true;
+          setTimeout(() => playSound('flip'), i * 55 + 40);
+        }
+        cd.addEventListener('animationend', () => {
+          cd.classList.remove('deal-in');
+          cd.style.animationDelay = '';
+          // deal-in 끝난 뒤 miss-glow 적용 (새로 바닥에 놓인 패)
+          if (missGlowIds.has(c.id)) {
+            missGlowIds.delete(c.id);
+            cd.classList.add('miss-glow');
+            cd.addEventListener('animationend', () => cd.classList.remove('miss-glow'), { once: true });
+          }
+        }, { once: true });
+      } else if (missGlowIds.has(c.id)) {
+        // 이미 바닥에 있던 카드가 glow 대상이면 바로 적용
+        missGlowIds.delete(c.id);
+        requestAnimationFrame(() => {
+          cd.classList.remove('miss-glow');
+          void cd.offsetWidth; // reflow
+          cd.classList.add('miss-glow');
+          cd.addEventListener('animationend', () => cd.classList.remove('miss-glow'), { once: true });
+        });
+      }
+      return cd;
+    };
+
+    if (mc.length >= 3) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'card-stack';
+      mc.forEach((c, i) => {
+        const cd = makeFieldCard(c, i);
+        cd.style.position = 'absolute';
+        cd.style.top  = `${i * 3}px`;
+        cd.style.left = `${i * 3}px`;
+        cd.style.zIndex = i;
+        wrapper.appendChild(cd);
+      });
+      el.appendChild(wrapper);
+    } else {
+      mc.forEach((c, i) => el.appendChild(makeFieldCard(c, i)));
+    }
+  });
+
+  prevFieldIds = new Set(cards.map(c => c.id));
+  lastPlayedHandCardId = null; // renderField 후 초기화
+}
+
+function renderMyHand(cards, active) {
+  const el = document.getElementById('my-hand');
+  el.innerHTML = '';
+  const heundeulMonths = new Set(gs?.heundeulMonths || []);
+  // 내 차례일 때: 바닥에 같은 월이 있는 손패 → can-match 표시
+  const fieldMonths = active ? new Set((gs?.field || []).map(c => c.month)) : new Set();
+  const sorted = [...cards].sort((a, b) => a.month - b.month);
+  sorted.forEach(c => {
+    const sel        = selCard && selCard.id === c.id;
+    const dim        = !active;
+    const isHeundeul = heundeulMonths.has(c.month);
+    const isMatch    = active && fieldMonths.has(c.month);
+    el.appendChild(makeCard(c, {
+      onClick: active ? card => handClick(card) : null,
+      extraClass: `${sel?'selected':''} ${dim?'dim':''} ${isHeundeul?'heundeul-card':''} ${isMatch?'can-match':''}`,
+    }));
+  });
+}
+
+const CAP_TYPE_ORDER  = ['gwang', 'yeolkkut', 'ribbon', 'pi'];
+const CAP_TYPE_LABELS = { gwang: '광', yeolkkut: '열끗', ribbon: '띠', pi: '피' };
+
+function groupCardsByType(cards, chrysPi = false) {
+  const g = { gwang: [], yeolkkut: [], ribbon: [], pi: [] };
+  cards.forEach(c => {
+    const type = (c.id === 32 && chrysPi) ? 'pi' : c.type;
+    if (g[type]) g[type].push(c);
+  });
+  return g;
+}
+
+function renderMyCaptured(cards) {
+  const el = document.getElementById('my-captured');
+  el.innerHTML = '';
+  const chrysPi = gs?.chrysanthemumChoices?.[myId] === 'pi';
+  const groups  = groupCardsByType(cards, chrysPi);
+  CAP_TYPE_ORDER.forEach(type => {
+    const cs = groups[type];
+    if (!cs.length) return;
+    const lbl = document.createElement('span');
+    lbl.className = 'cap-type-label';
+    lbl.textContent = CAP_TYPE_LABELS[type];
+    el.appendChild(lbl);
+    cs.forEach(c => el.appendChild(makeCard(c)));
+  });
+}
+
+function renderOpponents(pids, nm, hs, cap, scores, go, curPid, playerScores) {
+  const row = document.getElementById('opponents-row');
+  row.innerHTML = '';
+  pids.filter(p => p !== myId).forEach(pid => {
+    const sc   = scores[pid] || { score:0, counts:{gwang:0,yeol:0,ribbon:0,pi:0} };
+    const gc   = go[pid] || 0;
+    const cur  = pid === curPid;
+    const caps = cap[pid] || [];
+    const chips = playerScores && playerScores[pid] !== undefined ? playerScores[pid] : null;
+
+    const heundeulBadge = (gs?.heundeulPids || []).includes(pid)
+      ? ` <span style="color:#7af;font-size:.58rem">🎋</span>` : '';
+
+    const div = document.createElement('div');
+    div.className = 'opponent-panel';
+    div.dataset.pid = pid;
+    div.innerHTML = `
+      <div class="opp-name">
+        <span class="turn-ind ${cur?'on':''}"></span>
+        ${nm[pid]}${heundeulBadge}${gc>0?` <span style="color:#f06020;font-size:.65rem">${gc}고</span>`:''}
+        <span style="margin-left:auto;font-size:.62rem;color:#777">손패 ${hs[pid]||0}</span>
+      </div>
+      <div class="opp-captured" id="oc-${pid}"></div>
+      <div class="opp-score">${sc.score}점${sc.breakdown?.godori?` 🐦고도리`:''} &nbsp;광${sc.counts.gwang} 열${sc.counts.yeol} 띠${sc.counts.ribbon} 피${sc.counts.pi}</div>
+      ${chips !== null ? `<div class="opp-chips">💰 보유: ${chips}점</div>` : ''}`;
+
+    const capEl  = div.querySelector(`#oc-${pid}`);
+    const chrysPi = gs?.chrysanthemumChoices?.[pid] === 'pi';
+    const CAP_SHORT = { gwang: '광', yeolkkut: '열', ribbon: '띠', pi: '피' };
+    if (caps.length === 0) {
+      const emp = document.createElement('span');
+      emp.style.cssText = 'font-size:.62rem;color:#555';
+      emp.textContent = '획득 없음';
+      capEl.appendChild(emp);
+    } else {
+      const groups = groupCardsByType(caps, chrysPi);
+      CAP_TYPE_ORDER.forEach(type => {
+        const cs = groups[type];
+        if (!cs.length) return;
+        // 타입별 행: [광] [card][card] … (카드 많으면 wrap)
+        const typeRow = document.createElement('div');
+        typeRow.className = 'opp-type-row';
+        const lbl = document.createElement('span');
+        lbl.className = 'opp-cap-label';
+        lbl.textContent = CAP_SHORT[type];
+        typeRow.appendChild(lbl);
+        cs.forEach(c => {
+          const img = document.createElement('div');
+          img.className = 'opp-cap-card';
+          img.style.backgroundImage = `url('img/cards/${c.id}.png?v=2')`;
+          typeRow.appendChild(img);
+        });
+        capEl.appendChild(typeRow);
+      });
+    }
+    row.appendChild(div);
+  });
+}
+
+function renderMyScore(sc, chips) {
+  if (!sc) return;
+  const { score, breakdown, counts } = sc;
+  const chipsHtml    = chips !== undefined ? `<span class="sc-chips">💰 ${chips}점</span>` : '';
+  const heundeulHtml = (gs?.heundeulMonths?.length > 0)
+    ? `<span style="color:#7af;font-size:.72rem">🎋 흔들</span>` : '';
+  const godoriHtml   = breakdown?.godori
+    ? `<span style="color:var(--gold);font-size:.72rem">🐦 고도리+${breakdown.godori}</span>` : '';
+  document.getElementById('my-score-panel').innerHTML = `
+    <span class="sc-total">📊 ${score}점</span>
+    ${chipsHtml}
+    ${heundeulHtml}
+    ${godoriHtml}
+    <span class="sc-item">광<span>${counts.gwang}</span></span>
+    <span class="sc-item">열끗<span>${counts.yeol}</span></span>
+    <span class="sc-item">띠<span>${counts.ribbon}</span></span>
+    <span class="sc-item">피<span>${counts.pi}</span></span>`;
+}
+
+// ── 카드 클릭 처리 ───────────────────────────────────────────────────
+function handClick(card) {
+  if (!gs || !gs.isMyTurn || gs.phase !== 'play') return;
+  if (waitField || waitDeck) return;
+
+  if (selCard && selCard.id === card.id) {
+    doPlay(card, null);
+    return;
+  }
+
+  selCard = card;
+  const matches = gs.field.filter(c => c.month === card.month);
+
+  if (matches.length === 0 || matches.length === 1 || matches.length >= 3) {
+    renderField(gs.field);
+    renderMyHand(gs.myHand, true);
+    doPlay(card, null);
+  } else {
+    pendingChoices = matches.map(c => c.id);
+    renderField(gs.field);
+    renderMyHand(gs.myHand, true);
+    setStatus('획득할 바닥 카드를 선택하세요', true);
+  }
+}
+
+function fieldClick(fid) {
+  if (waitField) {
+    playSound('capture');
+    skipNextAnim = true;
+    waitField = false;
+    const sc = selCard;
+    selCard = null; pendingChoices = [];
+    socket.emit('play_card', { cardId: sc.id, fieldChoiceId: fid });
+  } else if (waitDeck) {
+    playSound('capture');
+    waitDeck = false;
+    pendingChoices = [];
+    socket.emit('choose_deck_field', { fieldChoiceId: fid });
+  } else if (selCard && gs?.isMyTurn) {
+    playSound('capture');
+    skipNextAnim = true;
+    const sc = selCard;
+    selCard = null; pendingChoices = [];
+    socket.emit('play_card', { cardId: sc.id, fieldChoiceId: fid });
+  }
+}
+
+function doPlay(card, fid) {
+  selCard = null; pendingChoices = [];
+  skipNextAnim = true; // 내가 직접 낸 패는 애니메이션 스킵
+  const hasMatch = gs?.field.some(c => c.month === card.month);
+  if (hasMatch) {
+    playSound('capture');
+    lastPlayedHandCardId = null;
+  } else {
+    playSound('miss');
+    lastPlayedHandCardId = card.id; // 손패가 바닥에 놓임 → 덱 뒤집기와 구분
+  }
+  socket.emit('play_card', { cardId: card.id, fieldChoiceId: fid });
+}
+
+
+// ── 쪽/흔들기 가능한 액션 핸들러 ──────────────────────────────────
+socket.on('available_actions', ({ jjot, shake }) => {
+  const jBtn = document.getElementById('btn-jjot');
+  const sBtn = document.getElementById('btn-shake');
+  if (!jBtn || !sBtn) return;
+  if (jjot && jjot.length > 0) {
+    jBtn.style.display = '';
+    jBtn._action = jjot[0];
+    jBtn.textContent = '🃏 쪽 (' + jjot[0].month + '월) ' + jjot.length + '개';
+  } else {
+    jBtn.style.display = 'none';
+  }
+  if (shake && shake.length > 0) {
+    sBtn.style.display = '';
+    sBtn._action = shake[0];
+    sBtn.textContent = '👋 흔들기 (' + shake[0].month + '월) ' + shake.length + '개';
+  } else {
+    sBtn.style.display = 'none';
+  }
+});
+
+socket.on('opponent_shake', ({ name, month }) => {
+  showToast('👋 ' + name + '이(가) ' + month + '월을 흔들었습니다!', 2000);
+});
+
+function decide(d) {
+  document.getElementById('ov-gostop').classList.remove('active');
+  socket.emit('go_stop', { decision: d });
+  if (d === 'go') {
+    document.getElementById('wait-msg').textContent = '다른 플레이어를 기다리는 중...';
+    document.getElementById('ov-wait').classList.add('active');
+  }
+}
+
+// ── 채팅 ─────────────────────────────────────────────────────────────
+function addChat(d) {
+  const el = document.getElementById('chat-msgs');
+  const div = document.createElement('div');
+  div.className = 'chat-msg' + (d.system ? ' sys' : '');
+  if (d.system) div.textContent = d.msg;
+  else div.innerHTML = `<span class="cn">${d.name}:</span> ${d.msg}`;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+  if (!chatOpen) {
+    chatUnread++;
+    const badge = document.getElementById('chat-badge');
+    badge.textContent = chatUnread > 9 ? '!' : chatUnread;
+    badge.classList.add('show');
+  }
+}
+function sysChat(m) { addChat({ system: true, msg: m }); }
+function sendChat() {
+  const inp = document.getElementById('chat-inp');
+  const m = inp.value.trim();
+  if (!m) return;
+  socket.emit('chat', { msg: m });
+  inp.value = '';
+}
+
+
+
+// ── 자동 로그인 체크 ──────────────────────────────────────────────────
+(function() {
+  const savedToken = getToken();
+  if (savedToken) {
+    fetch('/api/me?token=' + savedToken).then(r => r.json()).then(data => {
+      if (data.user) {
+        localStorage.setItem('gostop_username', data.user.username);
+        localStorage.setItem('gostop_money', data.user.money);
+        socket.auth = { token: savedToken };
+        socket.connect();
+        show('s-lobby');
+        updateUserInfo();
+      } else {
+        localStorage.removeItem(TOKEN_KEY);
+        show('s-login');
+      }
+    }).catch(() => {
+      show('s-login');
+    });
+  } else {
+    show('s-login');
+  }
+})();
+
+// ── 랜덤 닉네임 초기값 ────────────────────────────────────────────────
+const RANDOM_NAMES = [
+  '꽃사슴', '하늘달', '봄바람', '청룡이', '빨간장미',
+  '노란병아리', '초록거북', '파란하늘', '은빛별', '금빛해',
+  '달토끼', '산토끼', '강아지풀', '솔바람', '눈꽃이',
+  '무지개', '단풍잎', '벚꽃비', '여울물', '산들바람',
+  '고스톱왕', '화투달인', '패왕', '광쟁이', '피모아',
+  '대박나자', '고고씽', '운빨맨', '패감별사', '고도리왕',
+];
+document.getElementById('inp-name').value =
+  RANDOM_NAMES[Math.floor(Math.random() * RANDOM_NAMES.length)];
+document.getElementById('inp-name').focus();
+</script>
+</body>
+</html>
